@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Nukumizu Backend
 
 Remote server monitoring and command execution subsystem for [Komari](https://www.komari.wiki).
@@ -157,6 +156,3 @@ go build -o nukumizu-backend .
 ## License
 
 See [LICENSE](LICENSE).
-=======
-# nukumizu-backend
->>>>>>> b3a5a5bad12c5ad7119d7b1b41134830233cdf67
