@@ -78,7 +78,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		cfg.DataPath = "./data"
 	}
 	if cfg.DBPath == "" {
-		cfg.DBPath = "./logs.db"
+		cfg.DBPath = "./db"
 	}
 
 	// Apply default message templates if not specified.

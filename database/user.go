@@ -38,6 +38,23 @@ func InitUserDB(dbPath string) error {
 		return fmt.Errorf("failed to ping user database: %w", err)
 	}
 
+	// Use the rollback journal (DELETE) instead of WAL.
+	//
+	// WAL memory-maps a -shm index file. modernc.org/sqlite (a C-to-Go
+	// transpile) is built without SEH on Windows, so an I/O page fault on that
+	// mapping (common when the database lives on an SMB/network share)
+	// terminates the process with EXCEPTION_IN_PAGE_ERROR instead of being
+	// caught and retried. With SetMaxOpenConns(1) above, WAL provides no
+	// concurrency benefit either, so the rollback journal is strictly better.
+	if _, err := UserDB.Exec("PRAGMA journal_mode=DELETE"); err != nil {
+		return fmt.Errorf("failed to set journal mode: %w", err)
+	}
+
+	// Wait up to 5 seconds for a busy database instead of immediately failing with SQLITE_BUSY.
+	if _, err := UserDB.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		return fmt.Errorf("failed to set busy timeout: %w", err)
+	}
+
 	if err := initUserTable(); err != nil {
 		return fmt.Errorf("failed to initialize user table: %w", err)
 	}
