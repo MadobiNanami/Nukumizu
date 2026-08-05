@@ -23,9 +23,6 @@ func SetupRouter() *http.ServeMux {
 	mux.HandleFunc("/api/server/getStatus", handler.ServerGetStatusHandler)
 	mux.HandleFunc("/api/server/exec", handler.ServerExecHandler)
 
-	// Bot message receive endpoint (from napcat-bridge).
-	mux.HandleFunc("/api/bot/msg/recv", handler.BotMessageHandler)
-
 	// Health check endpoint.
 	mux.HandleFunc("/health", handler.HealthHandler)
 

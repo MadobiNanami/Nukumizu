@@ -21,7 +21,6 @@ nukumizu-backend/
 ├── handler/
 │   ├── user.go              # User login/register handlers
 │   ├── server.go            # Server list/status/exec handlers
-│   ├── bot.go               # Bot message receive handler
 │   └── health.go            # Health check endpoint
 ├── database/
 │   └── user.go              # SQLite user database
@@ -33,15 +32,18 @@ nukumizu-backend/
 │   ├── komari/
 │   │   ├── client.go        # Komari HTTP API client
 │   │   └── ws.go            # Komari WebSocket client
+│   ├── qq/
+│   │   ├── qq.go            # QQ (Napcat) Bot controller
+│   │   └── napcat.go        # NapCat HTTP API + WebSocket client
 │   ├── node/
 │   │   └── tracker.go       # Thread-safe node state tracking
 │   ├── controller/
 │   │   ├── controller.go    # Controller interface & manager
-│   │   ├── qq.go            # QQ (Napcat) Bot controller
-│   │   ├── telegram.go      # Telegram Bot controller
-│   │   ├── email.go         # Email notification controller
-│   │   ├── ntfy.go          # Ntfy notification controller
-│   │   └── webhook.go       # Webhook notification controller
+│   │   └── pipes/
+│   │       ├── telegram.go  # Telegram Bot controller
+│   │       ├── email.go     # Email notification controller
+│   │       ├── ntfy.go      # Ntfy notification controller
+│   │       └── webhook.go   # Webhook notification controller
 │   └── template/
 │       └── template.go      # Message template engine
 ```
@@ -57,6 +59,10 @@ Copy and modify `config.json` at the project root:
         "listenAddr": "0.0.0.0",
         "listenPort": "8080"
     },
+    "debug": {
+        "showNapcatMsg": false,
+        "showTelegramMsg": false
+    },
     "komari": {
         "dashboardURL": "http://127.0.0.1:25774",
         "account": {
@@ -67,8 +73,9 @@ Copy and modify `config.json` at the project root:
     "controllerMethod": {
         "qq(napcat)": {
             "enabled": false,
-            "url": "http://127.0.0.1:8081",
-            "token": "",
+            "napcatAddr": "127.0.0.1",
+            "napcatPort": "3000",
+            "napcatToken": "",
             "botQQID": 0,
             "listenMethod": "global",
             "admins": [],
@@ -127,7 +134,6 @@ Authentication is via `X-Token` and `X-Timestamp` HTTP headers.
 | `/api/server/list` | GET | bot/admin | List all servers |
 | `/api/server/getStatus` | GET | bot/admin | Get server recent status |
 | `/api/server/exec` | POST | bot/admin | Execute command on server(s) |
-| `/api/bot/msg/recv` | POST | bot | Receive bot messages (from napcat-bridge) |
 | `/health` | GET | None | Health check |
 | `/api/system/getLogs` | WS | None | Real-time log streaming |
 

@@ -59,16 +59,6 @@ func GetManager() *Manager {
 	return globalManager
 }
 
-// GetController returns a specific controller by name.
-func GetController(name string) Controller {
-	if globalManager == nil {
-		return nil
-	}
-	globalManager.mu.RLock()
-	defer globalManager.mu.RUnlock()
-	return globalManager.controllers[name]
-}
-
 // Register adds a controller to the manager.
 func (m *Manager) Register(c Controller) {
 	m.mu.Lock()

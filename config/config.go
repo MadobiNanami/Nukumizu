@@ -31,6 +31,12 @@ func LoadConfig(configPath string) (*Config, error) {
 	if cfg.ControllerMethod.QQ.ListenMethod == "" {
 		cfg.ControllerMethod.QQ.ListenMethod = "global"
 	}
+	if cfg.ControllerMethod.QQ.NapcatAddr == "" {
+		cfg.ControllerMethod.QQ.NapcatAddr = "127.0.0.1"
+	}
+	if cfg.ControllerMethod.QQ.NapcatPort == "" {
+		cfg.ControllerMethod.QQ.NapcatPort = "3000"
+	}
 	if cfg.ControllerMethod.QQ.Admins == nil {
 		cfg.ControllerMethod.QQ.Admins = []string{}
 	}

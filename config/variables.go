@@ -7,6 +7,13 @@ type SystemConfig struct {
 	ListenPort string `json:"listenPort"`
 }
 
+// DebugConfig holds debug-level configuration.
+type DebugConfig struct {
+	ShowNapcatMsg  bool `json:"showNapcatMsg"`
+	ShowNapcatAction bool `json:"showNapcatAction"`
+	ShowTelegramMsg bool `json:"showTelegramMsg"`
+}
+
 // KomariAccount holds Komari login credentials.
 type KomariAccount struct {
 	Username string `json:"username"`
@@ -22,8 +29,9 @@ type KomariConfig struct {
 // QQConfig holds QQ (Napcat) Bot controller configuration.
 type QQConfig struct {
 	Enabled       bool     `json:"enabled"`
-	URL           string   `json:"url"`
-	Token         string   `json:"token"`
+	NapcatAddr    string   `json:"napcatAddr"`
+	NapcatPort    string   `json:"napcatPort"`
+	NapcatToken   string   `json:"napcatToken"`
 	BotQQID       int64    `json:"botQQID"`
 	ListenMethod  string   `json:"listenMethod"`
 	Admins        []string `json:"admins"`
@@ -88,6 +96,7 @@ type ControllerMessageConfig struct {
 // Config is the top-level application configuration.
 type Config struct {
 	System            SystemConfig            `json:"system"`
+	Debug  		      DebugConfig             `json:"debug"`
 	Komari            KomariConfig            `json:"komari"`
 	ControllerMethod  ControllerMethodConfig  `json:"controllerMethod"`
 	ControllerMessage ControllerMessageConfig `json:"controllerMessage"`

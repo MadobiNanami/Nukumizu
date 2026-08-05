@@ -15,6 +15,7 @@ import (
 	"nukumizu-backend/internal/controller"
 	"nukumizu-backend/internal/controller/pipes"
 	"nukumizu-backend/internal/komari"
+	"nukumizu-backend/internal/controller/pipes/qq_napcat"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/postLog"
 	"nukumizu-backend/utils"
@@ -159,7 +160,7 @@ func initControllers() {
 	}
 
 	// QQ (Napcat) controller.
-	qqCtrl := pipes.NewQQController(cfg.ControllerMethod.QQ)
+	qqCtrl := qq_napcat.NewQQController(cfg.ControllerMethod.QQ)
 	mgr.Register(qqCtrl)
 	go func() {
 		defer func() {
