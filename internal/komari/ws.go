@@ -3,7 +3,10 @@ package komari
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,24 +18,56 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// WSMessage is the structure of messages received from Komari WebSocket.
-type WSMessage struct {
-	Status string `json:"status"`
-	Data   struct {
-		Online []string                `json:"online"`
-		Data   map[string]node.Report  `json:"data"`
-	} `json:"data"`
+// rpcMethodLatestStatus asks Komari for the live status of every node.
+// It returns a map keyed by node UUID; each entry carries an `online` flag and
+// the flattened latest report fields.
+const rpcMethodLatestStatus = "common:getNodesLatestStatus"
+
+// jsonRpcResponse mirrors Komari's JSON-RPC 2.0 response envelope.
+type jsonRpcResponse struct {
+	Version string          `json:"jsonrpc"`
+	ID      any             `json:"id,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
+// nodeLatestStatus is one entry returned by common:getNodesLatestStatus.
+// Komari flattens the live report into these fields.
+type nodeLatestStatus struct {
+	Time           string  `json:"time"`
+	CPU            float64 `json:"cpu"`
+	RAM            int64   `json:"ram"`
+	RAMTotal       int64   `json:"ram_total"`
+	Swap           int64   `json:"swap"`
+	SwapTotal      int64   `json:"swap_total"`
+	Load           float64 `json:"load"`
+	Load5          float64 `json:"load5"`
+	Load15         float64 `json:"load15"`
+	Disk           int64   `json:"disk"`
+	DiskTotal      int64   `json:"disk_total"`
+	NetIn          int64   `json:"net_in"`
+	NetOut         int64   `json:"net_out"`
+	NetTotalUp     int64   `json:"net_total_up"`
+	NetTotalDown   int64   `json:"net_total_down"`
+	Process        int     `json:"process"`
+	Connections    int     `json:"connections"`
+	ConnectionsUDP int     `json:"connections_udp"`
+	Online         bool    `json:"online"`
+	Uptime         int64   `json:"uptime"`
 }
 
 // WSClient manages a WebSocket connection to Komari for real-time status updates.
 type WSClient struct {
-	komariURL      string
-	conn           *websocket.Conn
-	connMu         sync.Mutex
-	reconnectCount atomic.Int32
-	maxRetries     int
-	stopCh         chan struct{}
-	running        atomic.Bool
+	komariURL       string
+	conn            *websocket.Conn
+	connMu          sync.Mutex
+	reconnectCount  atomic.Int32
+	maxRetries      int
+	stopCh          chan struct{}
+	running         atomic.Bool
 	onReconnectFail func() // Callback when all reconnection attempts fail.
 }
 
@@ -56,7 +91,6 @@ func (w *WSClient) Connect() error {
 
 	conn, err := w.dial()
 	if err != nil {
-		postLog.Error("Failed to connect to Komari WebSocket: " + err.Error())
 		return err
 	}
 
@@ -67,9 +101,9 @@ func (w *WSClient) Connect() error {
 	w.reconnectCount.Store(0)
 	w.running.Store(true)
 
-	// Request initial state.
-	if err := conn.WriteMessage(websocket.TextMessage, []byte("get")); err != nil {
-		postLog.Error("Failed to send 'get' message: " + err.Error())
+	// Request the initial node status snapshot.
+	if err := w.requestStatus(conn); err != nil {
+		postLog.Error("Failed to send initial node status request: " + err.Error())
 		return err
 	}
 
@@ -79,17 +113,24 @@ func (w *WSClient) Connect() error {
 	return nil
 }
 
+// dial opens the WebSocket connection to Komari's JSON-RPC endpoint (/api/rpc2).
+// Komari's CheckWebSocketOrigin rejects handshakes that carry no Origin header
+// (HTTP 403 → "bad handshake"), and without the session_token cookie the
+// connection is treated as an anonymous guest, so both are sent.
 func (w *WSClient) dial() (*websocket.Conn, error) {
-	// Build the WebSocket URL from the Komari HTTP URL.
-	wsURL := w.komariURL
-	if len(wsURL) > 7 && wsURL[:7] == "http://" {
-		wsURL = "ws://" + wsURL[7:]
-	} else if len(wsURL) > 8 && wsURL[:8] == "https://" {
-		wsURL = "wss://" + wsURL[8:]
+	wsURL, origin, err := w.buildWSURL()
+	if err != nil {
+		return nil, err
 	}
-	wsURL = wsURL + "/api/clients"
 
 	header := http.Header{}
+	header.Set("Origin", origin)
+	if client := GetClient(); client != nil {
+		if token := client.GetSessionToken(); token != "" {
+			header.Set("Cookie", "session_token="+token)
+		}
+	}
+
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 	}
@@ -98,6 +139,50 @@ func (w *WSClient) dial() (*websocket.Conn, error) {
 	return conn, err
 }
 
+// buildWSURL converts the configured HTTP(S) base URL into the WebSocket URL for
+// /api/rpc2 and derives the Origin header value that matches its host.
+func (w *WSClient) buildWSURL() (wsURL, origin string, err error) {
+	base := strings.TrimRight(w.komariURL, "/")
+	if base == "" {
+		return "", "", fmt.Errorf("empty Komari URL")
+	}
+
+	origin = base
+	switch {
+	case strings.HasPrefix(base, "http://"):
+		wsURL = "ws://" + strings.TrimPrefix(base, "http://")
+	case strings.HasPrefix(base, "https://"):
+		wsURL = "wss://" + strings.TrimPrefix(base, "https://")
+	default:
+		return "", "", fmt.Errorf("unsupported Komari URL scheme: %s", base)
+	}
+
+	wsURL += "/api/rpc2"
+
+	// Clean the Origin to "scheme://host" (no path/trailing slash).
+	if u, perr := url.Parse(origin); perr == nil {
+		origin = u.Scheme + "://" + u.Host
+	}
+	return wsURL, origin, nil
+}
+
+// requestStatus asks Komari for a fresh snapshot of all node statuses.
+func (w *WSClient) requestStatus(conn *websocket.Conn) error {
+	payload, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  rpcMethodLatestStatus,
+		"params":  map[string]any{},
+		"id":      1,
+	})
+	if err != nil {
+		return err
+	}
+	return conn.WriteMessage(websocket.TextMessage, payload)
+}
+
+// readLoop reads JSON-RPC responses and feeds the node tracker.
+// Komari never pushes unsolicited messages on /api/rpc2, so the loop re-requests
+// a fresh snapshot whenever the connection stays quiet for a refresh interval.
 func (w *WSClient) readLoop() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -105,6 +190,11 @@ func (w *WSClient) readLoop() {
 		}
 		w.running.Store(false)
 	}()
+
+	const (
+		refreshInterval = 5 * time.Second
+		readTimeout     = refreshInterval + 5*time.Second
+	)
 
 	for {
 		select {
@@ -121,33 +211,94 @@ func (w *WSClient) readLoop() {
 			return
 		}
 
+		if err := conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
+			postLog.Warning("Komari WebSocket set read deadline error: " + err.Error())
+			w.tryReconnect()
+			return
+		}
+
 		_, data, err := conn.ReadMessage()
 		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				// No push within the window — pull a fresh snapshot.
+				if rerr := w.requestStatus(conn); rerr != nil {
+					postLog.Warning("Failed to request node status refresh: " + rerr.Error())
+				}
+				continue
+			}
 			postLog.Warning("Komari WebSocket read error: " + err.Error())
 			w.tryReconnect()
 			return
 		}
 
-		var msg WSMessage
-		if err := json.Unmarshal(data, &msg); err != nil {
+		var rpcResp jsonRpcResponse
+		if err := json.Unmarshal(data, &rpcResp); err != nil {
 			postLog.Warning("Failed to parse Komari WebSocket message: " + err.Error())
 			continue
 		}
-
-		if msg.Status != "success" {
-			postLog.Warning("Komari WebSocket message with non-success status")
+		if rpcResp.Error != nil {
+			postLog.Warning("Komari WebSocket RPC error: " + rpcResp.Error.Message)
+			continue
+		}
+		if len(rpcResp.Result) == 0 {
 			continue
 		}
 
-		// Update the node tracker with the received data.
-		tracker := node.GetTracker()
-		if tracker != nil {
-			tracker.UpdateStatus(msg.Data.Online, msg.Data.Data)
+		online, reports := parseLatestStatus(rpcResp.Result)
+		if tracker := node.GetTracker(); tracker != nil {
+			tracker.UpdateStatus(online, reports)
 		}
 	}
 }
 
+// parseLatestStatus converts a common:getNodesLatestStatus result into the
+// online UUID list and per-node report map consumed by the node tracker.
+func parseLatestStatus(raw json.RawMessage) ([]string, map[string]node.Report) {
+	var statuses map[string]nodeLatestStatus
+	if err := json.Unmarshal(raw, &statuses); err != nil {
+		postLog.Warning("Failed to parse node latest status: " + err.Error())
+		return nil, map[string]node.Report{}
+	}
+
+	online := make([]string, 0, len(statuses))
+	reports := make(map[string]node.Report, len(statuses))
+	for uuid, s := range statuses {
+		if s.Online {
+			online = append(online, uuid)
+		}
+
+		var r node.Report
+		r.CPU.Usage = s.CPU
+		r.RAM.Total = s.RAMTotal
+		r.RAM.Used = s.RAM
+		r.Swap.Total = s.SwapTotal
+		r.Swap.Used = s.Swap
+		r.Load.Load1 = s.Load
+		r.Load.Load5 = s.Load5
+		r.Load.Load15 = s.Load15
+		r.Disk.Total = s.DiskTotal
+		r.Disk.Used = s.Disk
+		r.Network.Up = s.NetOut
+		r.Network.Down = s.NetIn
+		r.Network.TotalUp = s.NetTotalUp
+		r.Network.TotalDown = s.NetTotalDown
+		r.Connections.TCP = s.Connections - s.ConnectionsUDP
+		r.Connections.UDP = s.ConnectionsUDP
+		r.Uptime = int(s.Uptime)
+		r.Process = s.Process
+		r.UpdatedAt = s.Time
+		reports[uuid] = r
+	}
+	return online, reports
+}
+
 func (w *WSClient) tryReconnect() {
+	select {
+	case <-w.stopCh:
+		return
+	default:
+	}
+
 	count := w.reconnectCount.Add(1)
 	if int(count) > w.maxRetries {
 		postLog.Error(fmt.Sprintf("Komari WebSocket reconnection failed after %d attempts", w.maxRetries))
@@ -188,9 +339,9 @@ func (w *WSClient) tryReconnect() {
 
 	w.reconnectCount.Store(0)
 
-	// Request full state after reconnect.
-	if err := conn.WriteMessage(websocket.TextMessage, []byte("get")); err != nil {
-		postLog.Error("Failed to send 'get' after reconnect: " + err.Error())
+	// Request a fresh status snapshot after reconnect.
+	if err := w.requestStatus(conn); err != nil {
+		postLog.Error("Failed to send status request after reconnect: " + err.Error())
 		return
 	}
 

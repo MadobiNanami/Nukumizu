@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
+	"nukumizu-backend/config"
 	"nukumizu-backend/postLog"
 )
 
@@ -102,6 +105,9 @@ type Client struct {
 
 // NewClient creates a new Komari API client.
 func NewClient(baseURL string) *Client {
+	// Normalize away a trailing slash so paths are appended as "/api/..." and
+	// never become "//api/..." (which Komari's router rejects with 404).
+	baseURL = strings.TrimRight(baseURL, "/")
 	jar, _ := cookiejar.New(nil)
 	return &Client{
 		baseURL: baseURL,
@@ -135,6 +141,10 @@ func (c *Client) Login(username, password string) error {
 
 	var kr KomariResponse
 	if err := json.NewDecoder(resp.Body).Decode(&kr); err != nil {
+		if config.GetConfig().System.DebugMode {
+			respBody, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("failed to parse komari login response: %w.\nResponse: %s", err, respBody)
+		}
 		return fmt.Errorf("failed to parse komari login response: %w", err)
 	}
 
@@ -156,8 +166,9 @@ func (c *Client) Login(username, password string) error {
 	return fmt.Errorf("komari login response missing session_token cookie")
 }
 
-// getSessionToken returns the current session token.
-func (c *Client) getSessionToken() string {
+// GetSessionToken returns the current session token (empty string if not logged in).
+// The WebSocket client uses it to authenticate the /api/rpc2 connection.
+func (c *Client) GetSessionToken() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.sessionToken

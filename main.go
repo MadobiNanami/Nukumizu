@@ -44,9 +44,7 @@ func main() {
 	flag.Parse()
 
 	// Log startup banner.
-	postLog.Info(fmt.Sprintf("%s Ver.%s.%d.%s", softwareInfo.Name, softwareInfo.Version, softwareInfo.BuildVer, softwareInfo.BuildType))
-	postLog.Info(fmt.Sprintf("Developed by %s", softwareInfo.Developer))
-	postLog.Info(softwareInfo.Description)
+	postLog.Info(fmt.Sprintf("%s Ver.%s.%d.%s Developed by %s", softwareInfo.Name, softwareInfo.Version, softwareInfo.BuildVer, softwareInfo.BuildType, softwareInfo.Developer))
 
 	// Load configuration.
 	cfg, err := config.LoadConfig(*configPath)
@@ -59,9 +57,6 @@ func main() {
 	postLog.InitLogBroadcaster()
 
 	dbPath := cfg.DBPath
-	if dbPath == "" {
-		dbPath = "./db"
-	}
 
 	if err := postLog.InitLogsDatabase(fmt.Sprintf("%s/log.db", dbPath)); err != nil {
 		postLog.Fatal("Failed to initialize logs database: " + err.Error())
@@ -92,6 +87,7 @@ func main() {
 
 	if err := komari.LoginAndStart(); err != nil {
 		postLog.Fatal("Failed to login to Komari: " + err.Error())
+		return
 	}
 
 	// --- Start Komari WebSocket connection ---

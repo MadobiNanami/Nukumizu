@@ -137,7 +137,7 @@ func (t *Tracker) UpdateNodeList(nodeNames map[string]string) {
 		}
 	}
 
-	postLog.Debug(fmt.Sprintf("Node list updated: %d nodes", len(nodeNames)))
+	// postLog.Debug(fmt.Sprintf("Node list updated: %d nodes", len(nodeNames)))
 }
 
 // UpdateStatus processes a WebSocket status update from Komari.
