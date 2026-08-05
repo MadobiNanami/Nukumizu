@@ -1,4 +1,4 @@
-package controller
+package pipes
 
 import (
 	"bytes"

@@ -1,4 +1,4 @@
-package controller
+package pipes
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
 	"nukumizu-backend/postLog"
+	"nukumizu-backend/internal/controller"
 )
 
 // QQController handles QQ Bot interactions via napcat-bridge.
@@ -57,8 +58,8 @@ func (q *QQController) IsEnabled() bool {
 }
 
 // HandleCommand processes a bot command and returns a response string.
-func (q *QQController) HandleCommand(cmd Command) (string, error) {
-	parsed, ok := ParseCommand(cmd.RawText)
+func (q *QQController) HandleCommand(cmd controller.Command) (string, error) {
+	parsed, ok := controller.ParseCommand(cmd.RawText)
 	if !ok {
 		// Not a command. In "global" mode, silently ignore.
 		// In "at" mode, this would be an error - but at detection happens at the message level.
@@ -81,7 +82,7 @@ func (q *QQController) HandleCommand(cmd Command) (string, error) {
 	return q.executeCommand(parsed)
 }
 
-func (q *QQController) executeCommand(cmd Command) (string, error) {
+func (q *QQController) executeCommand(cmd controller.Command) (string, error) {
 	// Validate against supported commands.
 	switch cmd.Command {
 	case "list":
@@ -118,7 +119,7 @@ func (q *QQController) handleList() (string, error) {
 	return template.Render(cfg.ControllerMessage.ServerList, params), nil
 }
 
-func (q *QQController) handleStatus(cmd Command) (string, error) {
+func (q *QQController) handleStatus(cmd controller.Command) (string, error) {
 	if len(cmd.Args) < 1 {
 		return "Usage: /status <uuid>", nil
 	}
@@ -154,7 +155,7 @@ func (q *QQController) handleStatus(cmd Command) (string, error) {
 	return sb.String(), nil
 }
 
-func (q *QQController) handleShutdown(cmd Command) (string, error) {
+func (q *QQController) handleShutdown(cmd controller.Command) (string, error) {
 	if !q.isAdmin(cmd.SenderID) {
 		return "Permission denied: admin only", nil
 	}
@@ -176,7 +177,7 @@ func (q *QQController) handleShutdown(cmd Command) (string, error) {
 	return fmt.Sprintf("Shutdown command sent to server %s", uuid), nil
 }
 
-func (q *QQController) handleReboot(cmd Command) (string, error) {
+func (q *QQController) handleReboot(cmd controller.Command) (string, error) {
 	if !q.isAdmin(cmd.SenderID) {
 		return "Permission denied: admin only", nil
 	}
@@ -198,7 +199,7 @@ func (q *QQController) handleReboot(cmd Command) (string, error) {
 	return fmt.Sprintf("Reboot command sent to server %s", uuid), nil
 }
 
-func (q *QQController) handleRun(cmd Command) (string, error) {
+func (q *QQController) handleRun(cmd controller.Command) (string, error) {
 	if !q.isAdmin(cmd.SenderID) {
 		return "Permission denied: admin only", nil
 	}

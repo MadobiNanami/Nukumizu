@@ -13,6 +13,7 @@ import (
 	"nukumizu-backend/config"
 	"nukumizu-backend/database"
 	"nukumizu-backend/internal/controller"
+	"nukumizu-backend/internal/controller/pipes"
 	"nukumizu-backend/internal/komari"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/postLog"
@@ -158,7 +159,7 @@ func initControllers() {
 	}
 
 	// QQ (Napcat) controller.
-	qqCtrl := controller.NewQQController(cfg.ControllerMethod.QQ)
+	qqCtrl := pipes.NewQQController(cfg.ControllerMethod.QQ)
 	mgr.Register(qqCtrl)
 	go func() {
 		defer func() {
@@ -172,7 +173,7 @@ func initControllers() {
 	}()
 
 	// Telegram controller.
-	tgCtrl := controller.NewTelegramController(cfg.ControllerMethod.Telegram)
+	tgCtrl := pipes.NewTelegramController(cfg.ControllerMethod.Telegram)
 	mgr.Register(tgCtrl)
 	go func() {
 		defer func() {
@@ -186,7 +187,7 @@ func initControllers() {
 	}()
 
 	// Email controller (status-only).
-	emailCtrl := controller.NewEmailController(cfg.ControllerMethod.Email)
+	emailCtrl := pipes.NewEmailController(cfg.ControllerMethod.Email)
 	mgr.Register(emailCtrl)
 	go func() {
 		defer func() {
@@ -200,7 +201,7 @@ func initControllers() {
 	}()
 
 	// Ntfy controller (status-only).
-	ntfyCtrl := controller.NewNtfyController(cfg.ControllerMethod.Ntfy)
+	ntfyCtrl := pipes.NewNtfyController(cfg.ControllerMethod.Ntfy)
 	mgr.Register(ntfyCtrl)
 	go func() {
 		defer func() {
@@ -214,7 +215,7 @@ func initControllers() {
 	}()
 
 	// Webhook controller (status-only).
-	webhookCtrl := controller.NewWebhookController(cfg.ControllerMethod.Webhook)
+	webhookCtrl := pipes.NewWebhookController(cfg.ControllerMethod.Webhook)
 	mgr.Register(webhookCtrl)
 	go func() {
 		defer func() {

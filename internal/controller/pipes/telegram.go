@@ -1,4 +1,4 @@
-package controller
+package pipes
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
 	"nukumizu-backend/postLog"
+	"nukumizu-backend/internal/controller"
 )
 
 // TelegramController handles Telegram Bot interactions via long polling.
@@ -70,8 +71,8 @@ func (t *TelegramController) pollLoop() {
 }
 
 // HandleCommand processes a bot command and returns a response string.
-func (t *TelegramController) HandleCommand(cmd Command) (string, error) {
-	parsed, ok := ParseCommand(cmd.RawText)
+func (t *TelegramController) HandleCommand(cmd controller.Command) (string, error) {
+	parsed, ok := controller.ParseCommand(cmd.RawText)
 	if !ok {
 		if t.cfg.ListenMethod == "at" {
 			return "Unknown command format. Use /command args", nil
@@ -86,7 +87,7 @@ func (t *TelegramController) HandleCommand(cmd Command) (string, error) {
 	return t.executeCommand(parsed)
 }
 
-func (t *TelegramController) executeCommand(cmd Command) (string, error) {
+func (t *TelegramController) executeCommand(cmd controller.Command) (string, error) {
 	switch cmd.Command {
 	case "list":
 		return t.handleList()
@@ -122,7 +123,7 @@ func (t *TelegramController) handleList() (string, error) {
 	return template.Render(cfg.ControllerMessage.ServerList, params), nil
 }
 
-func (t *TelegramController) handleStatus(cmd Command) (string, error) {
+func (t *TelegramController) handleStatus(cmd controller.Command) (string, error) {
 	if len(cmd.Args) < 1 {
 		return "Usage: /status <uuid>", nil
 	}
@@ -155,7 +156,7 @@ func (t *TelegramController) handleStatus(cmd Command) (string, error) {
 	return sb.String(), nil
 }
 
-func (t *TelegramController) handleShutdown(cmd Command) (string, error) {
+func (t *TelegramController) handleShutdown(cmd controller.Command) (string, error) {
 	if !t.isAdmin(cmd.SenderID) {
 		return "Permission denied: admin only", nil
 	}
@@ -177,7 +178,7 @@ func (t *TelegramController) handleShutdown(cmd Command) (string, error) {
 	return fmt.Sprintf("Shutdown command sent to server %s", uuid), nil
 }
 
-func (t *TelegramController) handleReboot(cmd Command) (string, error) {
+func (t *TelegramController) handleReboot(cmd controller.Command) (string, error) {
 	if !t.isAdmin(cmd.SenderID) {
 		return "Permission denied: admin only", nil
 	}
@@ -199,7 +200,7 @@ func (t *TelegramController) handleReboot(cmd Command) (string, error) {
 	return fmt.Sprintf("Reboot command sent to server %s", uuid), nil
 }
 
-func (t *TelegramController) handleRun(cmd Command) (string, error) {
+func (t *TelegramController) handleRun(cmd controller.Command) (string, error) {
 	if !t.isAdmin(cmd.SenderID) {
 		return "Permission denied: admin only", nil
 	}
