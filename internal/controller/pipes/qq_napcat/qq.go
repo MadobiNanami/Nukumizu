@@ -95,6 +95,10 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 		return
 	}
 
+	if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatMsg {
+		postLog.Debug("Napcat WS event received: " + string(raw))
+	}
+
 	// Only handle message events; ignore notice/request/meta_event.
 	if ev.PostType != "message" {
 		return
