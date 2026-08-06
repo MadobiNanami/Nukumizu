@@ -84,7 +84,7 @@ func (t *TelegramController) processCommand(cmd controller.Command) string {
 
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
-	response, err := controller.GetManager().RouteCommand(parsed, t.cfg.TrustedGroups, t.cfg.Admins, t.cfg.ListenMethod)
+	response, err := controller.GetManager().Trigger(parsed, t.cfg.TrustedGroups, t.cfg.Admins, t.cfg.ListenMethod)
 	if err != nil {
 		postLog.Error("Telegram command processing failed: " + err.Error())
 		return ""

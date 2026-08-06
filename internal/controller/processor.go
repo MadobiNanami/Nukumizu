@@ -11,14 +11,14 @@ import (
 	"nukumizu-backend/postLog"
 )
 
-// RouteCommand validates an incoming command against the pipe's authorization
+// Trigger validates an incoming command against the pipe's authorization
 // config (trusted groups / admins) and, if authorized, processes it through
-// Trigger. It returns the response text to reply with; an empty response means
+// RouteCommand. It returns the response text to reply with; an empty response means
 // the command was discarded.
 //
 // All command handling across pipes is unified here: pipes only decide whether
 // a received message is a command, then hand the complete command over.
-func (m *Manager) RouteCommand(cmd Command, trustedGroups, admins []string, listenMethod string) (string, error) {
+func (m *Manager) Trigger(cmd Command, trustedGroups, admins []string, listenMethod string) (string, error) {
 	// Check whether the command arrived in a group or a private chat.
 	if cmd.ChatType == "group" {
 		// Group commands are only honored from trusted groups, otherwise discard.
@@ -34,7 +34,7 @@ func (m *Manager) RouteCommand(cmd Command, trustedGroups, admins []string, list
 		}
 	}
 
-	response, err := m.Trigger(cmd)
+	response, err := m.RouteCommand(cmd)
 	if err != nil {
 		return "", err
 	}
@@ -46,9 +46,9 @@ func (m *Manager) RouteCommand(cmd Command, trustedGroups, admins []string, list
 	return response, nil
 }
 
-// Trigger processes a parsed bot command and returns the response text.
+// RouteCommand processes a parsed bot command and returns the response text.
 // The actual command execution for every pipe is unified here.
-func (m *Manager) Trigger(cmd Command) (string, error) {
+func (m *Manager) RouteCommand(cmd Command) (string, error) {
 	cfg := config.GetConfig()
 	if cfg.System.DebugMode && cfg.Debug.ShowTriggerCmdEcho {
 		postLog.Debug("Trigger received command: /" + cmd.Command + " with args: " + strings.Join(cmd.Args, ", "))

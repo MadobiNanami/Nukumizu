@@ -154,14 +154,6 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 // complete command to the unified processor. It returns the response text to
 // reply with; an empty response means the message was discarded.
 func (q *QQController) processCommand(cmd controller.Command) string {
-	cfg := config.GetConfig()
-
-	// Debug: when ShowNapcatMsg is enabled, echo the received message back in real-time.
-	if cfg.Debug.ShowNapcatMsg {
-		postLog.Debug("Napcat message received: " + cmd.RawText)
-		return cmd.RawText
-	}
-
 	text := cmd.RawText
 
 	// In "at" listen mode, require an @mention of the bot and strip it before
@@ -190,7 +182,7 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
-	response, err := controller.GetManager().RouteCommand(parsed, q.cfg.TrustedGroups, q.cfg.Admins, q.cfg.ListenMethod)
+	response, err := controller.GetManager().Trigger(parsed, q.cfg.TrustedGroups, q.cfg.Admins, q.cfg.ListenMethod)
 	if err != nil {
 		postLog.Error("Napcat command processing failed: " + err.Error())
 		return ""
