@@ -7,7 +7,6 @@ import (
 
 	"nukumizu-backend/config"
 	"nukumizu-backend/internal/controller"
-	"nukumizu-backend/internal/komari"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
 	"nukumizu-backend/postLog"
@@ -16,18 +15,18 @@ import (
 // oneBotEvent mirrors a OneBot 11 event pushed over the NapCat WebSocket.
 // Only "message" events are handled; notice/request/meta_event are ignored.
 type oneBotEvent struct {
-	PostType    string          `json:"post_type"`
-	MessageType string          `json:"message_type"`
-	GroupID     int64           `json:"group_id"`
-	UserID      int64           `json:"user_id"`
-	RawMessage  string          `json:"raw_message"`
-	Message     json.RawMessage `json:"message"`
-	Sender      struct {
-		UserID   int64  `json:"user_id"`
-		Nickname string `json:"nickname"`
+	PostType    string          `json:"post_type"`          // Identifies "message", "notice", "request", or "meta_event"
+	MessageType string          `json:"message_type"`       // Identifies "private" or "group"
+	GroupID     int64           `json:"group_id"`           // Only present for group messages
+	UserID      int64           `json:"user_id"`            // The sender's QQ ID
+	RawMessage  string          `json:"raw_message"`        // The raw message text
+	Message     json.RawMessage `json:"message"`            // The message content, which may include CQ codes
+	Sender      struct {                                    // The sender's information
+		UserID   int64  `json:"user_id"`                    // The sender's QQ ID
+		Nickname string `json:"nickname"`                   // The sender's nickname
 	} `json:"sender"`
-	SelfID  int64  `json:"self_id"`
-	SubType string `json:"sub_type"`
+	SelfID  int64  `json:"self_id"`                         // The bot's QQ ID
+	SubType string `json:"sub_type"`                        // The subtype of the message, e.g., "normal", "anonymous", etc.
 }
 
 // QQController handles QQ Bot interactions by connecting directly to NapCat.
@@ -101,11 +100,20 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 
 	// Only handle message events; ignore notice/request/meta_event.
 	if ev.PostType != "message" {
+		if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatAction {
+			postLog.Debug("Ignoring Napcat WS event: " + string(raw))
+		}
 		return
 	}
 
 	// Ignore messages the bot itself sent (echo prevention).
-	if q.isSelfMessage(ev) {
+	if q.isSelfMessage(ev) && !config.GetConfig().System.DebugMode {
+		return
+	}
+	if q.isSelfMessage(ev) && config.GetConfig().System.DebugMode && config.GetConfig().Debug.NapcatIgnoreSelfMsg {
+		if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatAction {
+			postLog.Debug("Ignoring Napcat WS self message: " + string(raw))
+		}
 		return
 	}
 
@@ -115,7 +123,6 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 		chatID = ev.UserID
 	}
 
-	// Build a command from the raw message.
 	cmd := controller.Command{
 		RawText:  ev.RawMessage,
 		ChatID:   chatID,
@@ -123,13 +130,11 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 		SenderID: ev.UserID,
 	}
 
-	response, err := q.HandleCommand(cmd)
-	if err != nil {
-		postLog.Error("Napcat command handling failed: " + err.Error())
-		return
-	}
-
+	response := q.processCommand(cmd)
 	if response == "" {
+		if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatAction {
+			postLog.Debug("Napcat WS command discarded: " + string(raw))
+		}
 		return
 	}
 
@@ -145,6 +150,54 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 	}
 }
 
+// processCommand validates an incoming message as a command and hands the
+// complete command to the unified processor. It returns the response text to
+// reply with; an empty response means the message was discarded.
+func (q *QQController) processCommand(cmd controller.Command) string {
+	cfg := config.GetConfig()
+
+	// Debug: when ShowNapcatMsg is enabled, echo the received message back in real-time.
+	if cfg.Debug.ShowNapcatMsg {
+		postLog.Debug("Napcat message received: " + cmd.RawText)
+		return cmd.RawText
+	}
+
+	text := cmd.RawText
+
+	// In "at" listen mode, require an @mention of the bot and strip it before
+	// parsing, otherwise raw_message like "[CQ:at,qq=123] /list" fails the
+	// "/" prefix check.
+	if q.cfg.ListenMethod == "at" {
+		atMention := fmt.Sprintf("[CQ:at,qq=%d]", q.cfg.BotQQID)
+		if !strings.Contains(text, atMention) {
+			if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatAction {
+				postLog.Debug("Napcat WS message ignored (no @mention): " + text)
+			}
+			return "" // Not mentioned, ignore.
+		}
+		text = strings.ReplaceAll(text, atMention, "")
+	}
+
+	// First check whether the received message is a command.
+	parsed, ok := controller.ParseCommand(text)
+	if !ok {
+		return "" // Not a command, discard.
+	}
+
+	parsed.ChatID = cmd.ChatID
+	parsed.ChatType = cmd.ChatType
+	parsed.SenderID = cmd.SenderID
+
+	// Hand the complete command to the unified processor, which checks group
+	// vs private, trusted groups, admin permissions, and executes it.
+	response, err := controller.GetManager().RouteCommand(parsed, q.cfg.TrustedGroups, q.cfg.Admins, q.cfg.ListenMethod)
+	if err != nil {
+		postLog.Error("Napcat command processing failed: " + err.Error())
+		return ""
+	}
+	return response
+}
+
 // isSelfMessage returns true when the event was generated by the bot itself.
 func (q *QQController) isSelfMessage(ev oneBotEvent) bool {
 	if q.cfg.BotQQID > 0 && ev.SelfID == q.cfg.BotQQID {
@@ -154,210 +207,6 @@ func (q *QQController) isSelfMessage(ev oneBotEvent) bool {
 		return true
 	}
 	return false
-}
-
-// HandleCommand processes a bot command and returns a response string.
-func (q *QQController) HandleCommand(cmd controller.Command) (string, error) {
-	cfg := config.GetConfig()
-
-	// Debug: when ShowNapcatMsg is enabled, echo the received message back in real-time.
-	if cfg.Debug.ShowNapcatMsg {
-		postLog.Debug("Napcat message received: " + cmd.RawText)
-		return cmd.RawText, nil
-	}
-
-	text := cmd.RawText
-
-	// Check listen method. In "at" mode the @mention must be stripped before
-	// parsing, otherwise raw_message like "[CQ:at,qq=123] /list" fails the
-	// "/" prefix check.
-	if q.cfg.ListenMethod == "at" {
-		atMention := fmt.Sprintf("[CQ:at,qq=%d]", q.cfg.BotQQID)
-		if !strings.Contains(text, atMention) {
-			return "", nil // Not mentioned, ignore.
-		}
-		text = strings.ReplaceAll(text, atMention, "")
-	}
-
-	parsed, ok := controller.ParseCommand(text)
-	if !ok {
-		// Not a command. In "global" mode, silently ignore.
-		// In "at" mode, this would be an error - but at detection happens at the message level.
-		return "", nil
-	}
-
-	parsed.ChatID = cmd.ChatID
-	parsed.ChatType = cmd.ChatType
-	parsed.SenderID = cmd.SenderID
-
-	return q.executeCommand(parsed)
-}
-
-func (q *QQController) executeCommand(cmd controller.Command) (string, error) {
-	// Validate against supported commands.
-	switch cmd.Command {
-	case "list":
-		return q.handleList()
-	case "status":
-		return q.handleStatus(cmd)
-	case "shutdown":
-		return q.handleShutdown(cmd)
-	case "reboot":
-		return q.handleReboot(cmd)
-	case "run":
-		return q.handleRun(cmd)
-	default:
-		if q.cfg.ListenMethod == "at" {
-			return "Unknown command: /" + cmd.Command, nil
-		}
-		return "", nil // Global mode: silently ignore unknown commands.
-	}
-}
-
-func (q *QQController) isAdmin(senderID int64) bool {
-	senderStr := fmt.Sprintf("%d", senderID)
-	for _, admin := range q.cfg.Admins {
-		if admin == senderStr {
-			return true
-		}
-	}
-	return false
-}
-
-func (q *QQController) handleList() (string, error) {
-	cfg := config.GetConfig()
-	params := template.BuildParamsFromServerList()
-	return template.Render(cfg.ControllerMessage.ServerList, params), nil
-}
-
-func (q *QQController) handleStatus(cmd controller.Command) (string, error) {
-	if len(cmd.Args) < 1 {
-		return "Usage: /status <uuid>", nil
-	}
-	uuid := cmd.Args[0]
-	tracker := node.GetTracker()
-	n, exists := tracker.GetNode(uuid)
-	if !exists {
-		return fmt.Sprintf("Server with UUID %s not found", uuid), nil
-	}
-
-	statusStr := "Offline"
-	if n.Online {
-		statusStr = "Online"
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Server: %s (%s)\n", n.Name, n.UUID))
-	sb.WriteString(fmt.Sprintf("Status: %s\n", statusStr))
-
-	if n.LatestReport != nil {
-		r := n.LatestReport
-		sb.WriteString(fmt.Sprintf("CPU: %.2f%%\n", r.CPU.Usage))
-		sb.WriteString(fmt.Sprintf("RAM: %d / %d\n", r.RAM.Used, r.RAM.Total))
-		sb.WriteString(fmt.Sprintf("Disk: %d / %d\n", r.Disk.Used, r.Disk.Total))
-		sb.WriteString(fmt.Sprintf("Network: ↑%d ↓%d\n", r.Network.Up, r.Network.Down))
-		sb.WriteString(fmt.Sprintf("Uptime: %d seconds\n", r.Uptime))
-		sb.WriteString(fmt.Sprintf("Processes: %d\n", r.Process))
-		if r.Message != "" {
-			sb.WriteString(fmt.Sprintf("Message: %s\n", r.Message))
-		}
-	}
-
-	return sb.String(), nil
-}
-
-func (q *QQController) handleShutdown(cmd controller.Command) (string, error) {
-	if !q.isAdmin(cmd.SenderID) {
-		return "Permission denied: admin only", nil
-	}
-	if len(cmd.Args) < 1 {
-		return "Usage: /shutdown <uuid>", nil
-	}
-
-	uuid := cmd.Args[0]
-	client := komari.GetClient()
-	if client == nil {
-		return "Error: Komari client not initialized", nil
-	}
-
-	_, err := client.ExecTask([]string{uuid}, "shutdown")
-	if err != nil {
-		return fmt.Sprintf("Error: %v", err), nil
-	}
-
-	return fmt.Sprintf("Shutdown command sent to server %s", uuid), nil
-}
-
-func (q *QQController) handleReboot(cmd controller.Command) (string, error) {
-	if !q.isAdmin(cmd.SenderID) {
-		return "Permission denied: admin only", nil
-	}
-	if len(cmd.Args) < 1 {
-		return "Usage: /reboot <uuid>", nil
-	}
-
-	uuid := cmd.Args[0]
-	client := komari.GetClient()
-	if client == nil {
-		return "Error: Komari client not initialized", nil
-	}
-
-	_, err := client.ExecTask([]string{uuid}, "reboot")
-	if err != nil {
-		return fmt.Sprintf("Error: %v", err), nil
-	}
-
-	return fmt.Sprintf("Reboot command sent to server %s", uuid), nil
-}
-
-func (q *QQController) handleRun(cmd controller.Command) (string, error) {
-	if !q.isAdmin(cmd.SenderID) {
-		return "Permission denied: admin only", nil
-	}
-	if len(cmd.Args) < 2 {
-		return "Usage: /run <uuid|all> <command>", nil
-	}
-
-	uuidArg := cmd.Args[0]
-	command := cmd.Args[1]
-	client := komari.GetClient()
-	if client == nil {
-		return "Error: Komari client not initialized", nil
-	}
-
-	var uuids []string
-	if uuidArg == "all" {
-		tracker := node.GetTracker()
-		for _, n := range tracker.GetAllNodes() {
-			uuids = append(uuids, n.UUID)
-		}
-	} else {
-		uuids = []string{uuidArg}
-	}
-
-	taskID, err := client.ExecTask(uuids, command)
-	if err != nil {
-		return fmt.Sprintf("Error executing command: %v", err), nil
-	}
-
-	results, err := client.PollTaskResult(taskID)
-	if err != nil {
-		return fmt.Sprintf("Error getting results: %v", err), nil
-	}
-
-	cfg := config.GetConfig()
-	params := template.BuildParamsFromExecResult(uuidArg, uuidArg, command, formatTaskResults(results))
-	return template.Render(cfg.ControllerMessage.ServerExecuteResult, params), nil
-}
-
-func formatTaskResults(results []komari.TaskResult) string {
-	var sb strings.Builder
-	for _, r := range results {
-		sb.WriteString(fmt.Sprintf("--- %s ---\n", r.Client))
-		sb.WriteString(r.Result)
-		sb.WriteString(fmt.Sprintf("\nExit code: %d\n", r.ExitCode))
-	}
-	return sb.String()
 }
 
 // SendStatusChange sends a status change notification via QQ.

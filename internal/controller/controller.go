@@ -31,12 +31,6 @@ type Controller interface {
 	SendExecuteResult(serverName, serverUUID, command, result string) error
 }
 
-// CommandController extends Controller for bidirectional channels (QQ, Telegram).
-type CommandController interface {
-	Controller
-	HandleCommand(cmd Command) (response string, err error)
-}
-
 // Manager manages all controller instances and routes events.
 type Manager struct {
 	mu          sync.RWMutex

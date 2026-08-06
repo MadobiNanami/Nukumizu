@@ -2,14 +2,12 @@ package pipes
 
 import (
 	"fmt"
-	"strings"
 
 	"nukumizu-backend/config"
-	"nukumizu-backend/internal/komari"
+	"nukumizu-backend/internal/controller"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
 	"nukumizu-backend/postLog"
-	"nukumizu-backend/internal/controller"
 )
 
 // TelegramController handles Telegram Bot interactions via long polling.
@@ -70,184 +68,28 @@ func (t *TelegramController) pollLoop() {
 	postLog.Info("Telegram polling started")
 }
 
-// HandleCommand processes a bot command and returns a response string.
-func (t *TelegramController) HandleCommand(cmd controller.Command) (string, error) {
+// processCommand validates an incoming message as a command and hands the
+// complete command to the unified processor. It returns the response text to
+// reply with; an empty response means the message was discarded.
+func (t *TelegramController) processCommand(cmd controller.Command) string {
+	// First check whether the received message is a command.
 	parsed, ok := controller.ParseCommand(cmd.RawText)
 	if !ok {
-		if t.cfg.ListenMethod == "at" {
-			return "Unknown command format. Use /command args", nil
-		}
-		return "", nil
+		return "" // Not a command, discard.
 	}
 
 	parsed.ChatID = cmd.ChatID
 	parsed.ChatType = cmd.ChatType
 	parsed.SenderID = cmd.SenderID
 
-	return t.executeCommand(parsed)
-}
-
-func (t *TelegramController) executeCommand(cmd controller.Command) (string, error) {
-	switch cmd.Command {
-	case "list":
-		return t.handleList()
-	case "status":
-		return t.handleStatus(cmd)
-	case "shutdown":
-		return t.handleShutdown(cmd)
-	case "reboot":
-		return t.handleReboot(cmd)
-	case "run":
-		return t.handleRun(cmd)
-	default:
-		if t.cfg.ListenMethod == "at" {
-			return "Unknown command: /" + cmd.Command, nil
-		}
-		return "", nil
-	}
-}
-
-func (t *TelegramController) isAdmin(senderID int64) bool {
-	senderStr := fmt.Sprintf("%d", senderID)
-	for _, admin := range t.cfg.Admins {
-		if admin == senderStr {
-			return true
-		}
-	}
-	return false
-}
-
-func (t *TelegramController) handleList() (string, error) {
-	cfg := config.GetConfig()
-	params := template.BuildParamsFromServerList()
-	return template.Render(cfg.ControllerMessage.ServerList, params), nil
-}
-
-func (t *TelegramController) handleStatus(cmd controller.Command) (string, error) {
-	if len(cmd.Args) < 1 {
-		return "Usage: /status <uuid>", nil
-	}
-	uuid := cmd.Args[0]
-	tracker := node.GetTracker()
-	n, exists := tracker.GetNode(uuid)
-	if !exists {
-		return fmt.Sprintf("Server with UUID %s not found", uuid), nil
-	}
-
-	statusStr := "Offline"
-	if n.Online {
-		statusStr = "Online"
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Server: %s (%s)\n", n.Name, n.UUID))
-	sb.WriteString(fmt.Sprintf("Status: %s\n", statusStr))
-
-	if n.LatestReport != nil {
-		r := n.LatestReport
-		sb.WriteString(fmt.Sprintf("CPU: %.2f%%\n", r.CPU.Usage))
-		sb.WriteString(fmt.Sprintf("RAM: %d / %d\n", r.RAM.Used, r.RAM.Total))
-		sb.WriteString(fmt.Sprintf("Disk: %d / %d\n", r.Disk.Used, r.Disk.Total))
-		sb.WriteString(fmt.Sprintf("Network: ↑%d ↓%d\n", r.Network.Up, r.Network.Down))
-		sb.WriteString(fmt.Sprintf("Uptime: %d seconds\n", r.Uptime))
-		sb.WriteString(fmt.Sprintf("Processes: %d\n", r.Process))
-	}
-
-	return sb.String(), nil
-}
-
-func (t *TelegramController) handleShutdown(cmd controller.Command) (string, error) {
-	if !t.isAdmin(cmd.SenderID) {
-		return "Permission denied: admin only", nil
-	}
-	if len(cmd.Args) < 1 {
-		return "Usage: /shutdown <uuid>", nil
-	}
-
-	uuid := cmd.Args[0]
-	client := komari.GetClient()
-	if client == nil {
-		return "Error: Komari client not initialized", nil
-	}
-
-	_, err := client.ExecTask([]string{uuid}, "shutdown")
+	// Hand the complete command to the unified processor, which checks group
+	// vs private, trusted groups, admin permissions, and executes it.
+	response, err := controller.GetManager().RouteCommand(parsed, t.cfg.TrustedGroups, t.cfg.Admins, t.cfg.ListenMethod)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err), nil
+		postLog.Error("Telegram command processing failed: " + err.Error())
+		return ""
 	}
-
-	return fmt.Sprintf("Shutdown command sent to server %s", uuid), nil
-}
-
-func (t *TelegramController) handleReboot(cmd controller.Command) (string, error) {
-	if !t.isAdmin(cmd.SenderID) {
-		return "Permission denied: admin only", nil
-	}
-	if len(cmd.Args) < 1 {
-		return "Usage: /reboot <uuid>", nil
-	}
-
-	uuid := cmd.Args[0]
-	client := komari.GetClient()
-	if client == nil {
-		return "Error: Komari client not initialized", nil
-	}
-
-	_, err := client.ExecTask([]string{uuid}, "reboot")
-	if err != nil {
-		return fmt.Sprintf("Error: %v", err), nil
-	}
-
-	return fmt.Sprintf("Reboot command sent to server %s", uuid), nil
-}
-
-func (t *TelegramController) handleRun(cmd controller.Command) (string, error) {
-	if !t.isAdmin(cmd.SenderID) {
-		return "Permission denied: admin only", nil
-	}
-	if len(cmd.Args) < 2 {
-		return "Usage: /run <uuid|all> <command>", nil
-	}
-
-	uuidArg := cmd.Args[0]
-	command := cmd.Args[1]
-	client := komari.GetClient()
-	if client == nil {
-		return "Error: Komari client not initialized", nil
-	}
-
-	var uuids []string
-	if uuidArg == "all" {
-		tracker := node.GetTracker()
-		for _, n := range tracker.GetAllNodes() {
-			uuids = append(uuids, n.UUID)
-		}
-	} else {
-		uuids = []string{uuidArg}
-	}
-
-	taskID, err := client.ExecTask(uuids, command)
-	if err != nil {
-		return fmt.Sprintf("Error executing command: %v", err), nil
-	}
-
-	results, err := client.PollTaskResult(taskID)
-	if err != nil {
-		return fmt.Sprintf("Error getting results: %v", err), nil
-	}
-
-	cfg := config.GetConfig()
-	params := template.BuildParamsFromExecResult(uuidArg, uuidArg, command, formatTelegramResults(results))
-	return template.Render(cfg.ControllerMessage.ServerExecuteResult, params), nil
-}
-
-func formatTelegramResults(results []komari.TaskResult) string {
-	var sb strings.Builder
-	for _, r := range results {
-		sb.WriteString(fmt.Sprintf("--- %s ---\n", r.Client))
-		sb.WriteString(r.Result)
-		sb.WriteString(fmt.Sprintf("\nExit code: %d\n", r.ExitCode))
-	}
-	return sb.String()
+	return response
 }
 
 // SendStatusChange sends a status change notification via Telegram.

@@ -46,9 +46,6 @@ func (e *EmailController) IsEnabled() bool {
 	return e.cfg.Enabled
 }
 
-// HandleCommand is not supported for Email (status-only controller).
-// This controller does not implement CommandController.
-
 // SendStatusChange sends a status change notification via Email.
 func (e *EmailController) SendStatusChange(change node.StatusChange) error {
 	if !e.cfg.Enabled {

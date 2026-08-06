@@ -1,18 +1,9 @@
 package controller
 
 import (
+	"fmt"
 	"strings"
-
-	"nukumizu-backend/config"
-	"nukumizu-backend/postLog"
 )
-
-// Trigger is a placeholder for triggering commands across all controllers.
-func (m *Manager) Trigger (command string, args []string) {
-	if config.GetConfig().System.DebugMode {
-		postLog.Debug("Received command: " + command + " with args: " + strings.Join(args, ", "))
-	}
-}
 
 // ParseCommand parses a raw message text into a Command.
 // Format: /{{command}} {{args...}}
@@ -54,4 +45,26 @@ func IsAdminCommand(command string) bool {
 	default:
 		return false
 	}
+}
+
+// IsAdmin returns whether the sender is present in the given admins list.
+func IsAdmin(senderID int64, admins []string) bool {
+	senderStr := fmt.Sprintf("%d", senderID)
+	for _, admin := range admins {
+		if admin == senderStr {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTrustedGroup returns whether the chat ID is present in the given trusted groups list.
+func IsTrustedGroup(chatID int64, trustedGroups []string) bool {
+	chatStr := fmt.Sprintf("%d", chatID)
+	for _, group := range trustedGroups {
+		if group == chatStr {
+			return true
+		}
+	}
+	return false
 }

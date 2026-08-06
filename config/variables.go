@@ -12,6 +12,8 @@ type DebugConfig struct {
 	ShowNapcatMsg  bool `json:"showNapcatMsg"`
 	ShowNapcatAction bool `json:"showNapcatAction"`
 	ShowTelegramMsg bool `json:"showTelegramMsg"`
+	ShowTriggerCmdEcho bool `json:"showTriggerCmdEcho"`
+	NapcatIgnoreSelfMsg bool `json:"napcatIgnoreSelfMsg"`
 }
 
 // KomariAccount holds Komari login credentials.
