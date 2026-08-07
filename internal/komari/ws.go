@@ -101,12 +101,6 @@ func (w *WSClient) Connect() error {
 	w.reconnectCount.Store(0)
 	w.running.Store(true)
 
-	// Request the initial node status snapshot.
-	if err := w.requestStatus(conn); err != nil {
-		postLog.Error("Failed to send initial node status request: " + err.Error())
-		return err
-	}
-
 	postLog.Info("Connected to Komari WebSocket")
 	go w.readLoop()
 
@@ -180,9 +174,15 @@ func (w *WSClient) requestStatus(conn *websocket.Conn) error {
 	return conn.WriteMessage(websocket.TextMessage, payload)
 }
 
-// readLoop reads JSON-RPC responses and feeds the node tracker.
-// Komari never pushes unsolicited messages on /api/rpc2, so the loop re-requests
-// a fresh snapshot whenever the connection stays quiet for a refresh interval.
+// readLoop repeatedly pulls a fresh status snapshot and feeds the node tracker.
+// Komari never pushes unsolicited messages on /api/rpc2, so the loop issues one
+// request per refresh interval and reads exactly one response.
+//
+// It must never continue reading on the same connection after a read deadline
+// timeout: gorilla/websocket marks a connection as corrupt once a read times
+// out and returns the stored error on every subsequent read, which would make
+// the loop spin until gorilla panics. A timed-out read therefore triggers a
+// reconnect instead.
 func (w *WSClient) readLoop() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -193,7 +193,7 @@ func (w *WSClient) readLoop() {
 
 	const (
 		refreshInterval = 5 * time.Second
-		readTimeout     = refreshInterval + 5*time.Second
+		readTimeout     = refreshInterval + 10*time.Second
 	)
 
 	for {
@@ -211,6 +211,13 @@ func (w *WSClient) readLoop() {
 			return
 		}
 
+		// Pull a fresh snapshot, then wait for its single response.
+		if err := w.requestStatus(conn); err != nil {
+			postLog.Warning("Failed to request node status refresh: " + err.Error())
+			w.tryReconnect()
+			return
+		}
+
 		if err := conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
 			postLog.Warning("Komari WebSocket set read deadline error: " + err.Error())
 			w.tryReconnect()
@@ -220,13 +227,10 @@ func (w *WSClient) readLoop() {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				// No push within the window — pull a fresh snapshot.
-				if rerr := w.requestStatus(conn); rerr != nil {
-					postLog.Warning("Failed to request node status refresh: " + rerr.Error())
-				}
-				continue
+				postLog.Warning("Komari WebSocket read timed out waiting for node status; reconnecting")
+			} else {
+				postLog.Warning("Komari WebSocket read error: " + err.Error())
 			}
-			postLog.Warning("Komari WebSocket read error: " + err.Error())
 			w.tryReconnect()
 			return
 		}
@@ -234,19 +238,20 @@ func (w *WSClient) readLoop() {
 		var rpcResp jsonRpcResponse
 		if err := json.Unmarshal(data, &rpcResp); err != nil {
 			postLog.Warning("Failed to parse Komari WebSocket message: " + err.Error())
-			continue
-		}
-		if rpcResp.Error != nil {
+		} else if rpcResp.Error != nil {
 			postLog.Warning("Komari WebSocket RPC error: " + rpcResp.Error.Message)
-			continue
-		}
-		if len(rpcResp.Result) == 0 {
-			continue
+		} else if len(rpcResp.Result) > 0 {
+			online, reports := parseLatestStatus(rpcResp.Result)
+			if tracker := node.GetTracker(); tracker != nil {
+				tracker.UpdateStatus(online, reports)
+			}
 		}
 
-		online, reports := parseLatestStatus(rpcResp.Result)
-		if tracker := node.GetTracker(); tracker != nil {
-			tracker.UpdateStatus(online, reports)
+		// Wait for the next refresh cycle before pulling again.
+		select {
+		case <-w.stopCh:
+			return
+		case <-time.After(refreshInterval):
 		}
 	}
 }
@@ -313,10 +318,7 @@ func (w *WSClient) tryReconnect() {
 	}
 
 	// Exponential backoff.
-	delay := time.Duration(1<<(count-1)) * time.Second
-	if delay > 30*time.Second {
-		delay = 30 * time.Second
-	}
+	delay := min(time.Duration(1<<(count-1))*time.Second, 30*time.Second)
 
 	postLog.Info(fmt.Sprintf("Attempting Komari WebSocket reconnect %d/%d in %v...",
 		count, w.maxRetries, delay))
@@ -338,12 +340,6 @@ func (w *WSClient) tryReconnect() {
 	w.connMu.Unlock()
 
 	w.reconnectCount.Store(0)
-
-	// Request a fresh status snapshot after reconnect.
-	if err := w.requestStatus(conn); err != nil {
-		postLog.Error("Failed to send status request after reconnect: " + err.Error())
-		return
-	}
 
 	// Re-fetch node list after reconnect.
 	client := GetClient()

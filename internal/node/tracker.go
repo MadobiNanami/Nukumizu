@@ -78,11 +78,12 @@ type Tracker struct {
 	callbacks  []StatusChangeCallback
 
 	// Initial-refresh gating: status-change notifications are suppressed until
-	// every node from the Komari node list has delivered a status update, so the
-	// startup state is treated as a baseline rather than a flood of changes.
-	knownUUIDs    map[string]bool // uuids from the Komari node list
-	reportedUUIDs map[string]bool // node-list uuids that have reported status
-	bootstrapDone bool            // true once the initial refresh has finished
+	// the initial status snapshot has been received, so the startup state is
+	// treated as a baseline rather than a flood of changes.
+	knownUUIDs       map[string]bool // uuids from the Komari node list
+	reportedUUIDs    map[string]bool // node-list uuids that have reported status
+	receivedSnapshot bool            // true once at least one snapshot has arrived
+	bootstrapDone    bool            // true once the initial refresh has finished
 }
 
 var globalTracker *Tracker
@@ -228,9 +229,7 @@ func (t *Tracker) UpdateStatus(onlineUUIDs []string, reports map[string]Report) 
 
 	t.onlineSet = newOnlineSet
 
-	// Track which node-list nodes have delivered a status update. The initial
-	// refresh is considered complete once every known node has reported at
-	// least once (either online or offline).
+	// Track which node-list nodes have delivered a status update.
 	for _, uuid := range onlineUUIDs {
 		if t.knownUUIDs[uuid] {
 			t.reportedUUIDs[uuid] = true
@@ -242,12 +241,19 @@ func (t *Tracker) UpdateStatus(onlineUUIDs []string, reports map[string]Report) 
 		}
 	}
 
-	// Changes detected while the initial refresh is still in progress represent
-	// the nodes' startup state rather than real transitions, so suppress them.
-	suppressChanges := !t.bootstrapDone
-	if !t.bootstrapDone && t.allKnownNodesReported() {
+	// The first received snapshot establishes the startup baseline, so its
+	// changes are always suppressed. Afterward, changes are suppressed only
+	// until the initial refresh is judged complete.
+	firstSnapshot := !t.receivedSnapshot
+	if len(onlineUUIDs) > 0 || len(reports) > 0 {
+		t.receivedSnapshot = true
+	}
+
+	suppressChanges := !t.bootstrapDone || firstSnapshot
+	if !t.bootstrapDone && t.refreshComplete(reports) {
 		t.bootstrapDone = true
-		postLog.Info(fmt.Sprintf("All %d nodes refreshed their status; status notifications enabled", len(t.knownUUIDs)))
+		postLog.Info(fmt.Sprintf("Initial node status refresh complete (%d/%d nodes reported); status notifications enabled",
+			len(t.reportedUUIDs), len(t.knownUUIDs)))
 	}
 	t.mu.Unlock()
 
@@ -274,9 +280,32 @@ func (t *Tracker) allKnownNodesReported() bool {
 	return true
 }
 
+// refreshComplete reports whether the initial status refresh is finished.
+// Komari returns the full latest-status batch in a single snapshot, so the
+// refresh is complete once a snapshot covering every node we have ever seen
+// has been processed. Node-list nodes that never report a status are treated
+// as permanently offline rather than blocking notifications forever.
+// Must be called with the lock held.
+func (t *Tracker) refreshComplete(currentReports map[string]Report) bool {
+	if t.allKnownNodesReported() {
+		return true
+	}
+	if len(currentReports) == 0 {
+		return false
+	}
+	for uuid := range t.reportedUUIDs {
+		if _, ok := currentReports[uuid]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // CompleteBootstrap force-completes the initial status refresh gate. It is a
-// safety net so that notifications cannot be blocked forever by a node that
-// never reports a status. Calling it again is a no-op.
+// safety net so that notifications cannot be blocked forever when no status
+// snapshot is ever received. It does not mark a snapshot as received, so the
+// first snapshot that does arrive is still treated as the baseline. Calling it
+// again is a no-op.
 func (t *Tracker) CompleteBootstrap() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
