@@ -55,6 +55,8 @@ func (m *Manager) RouteCommand(cmd Command) (string, error) {
 	}
 
 	switch cmd.Command {
+	case "help":
+		return handleHelp()
 	case "list":
 		return handleList()
 	case "status":
@@ -70,6 +72,12 @@ func (m *Manager) RouteCommand(cmd Command) (string, error) {
 	default:
 		return "", nil
 	}
+}
+
+func handleHelp() (string, error) {
+	cfg := config.GetConfig()
+	params := template.BuildBotInitializationMsgParams()
+	return template.Render(cfg.ControllerMessage.BotHelp, params), nil
 }
 
 func handleList() (string, error) {
