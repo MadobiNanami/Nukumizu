@@ -1,6 +1,7 @@
 /.claude
 agent.md
 config.json
+*.exe
 
 # SQLite database files. They live on a network share (Y:), and git/cloud
 # sync touching them while a WAL database is open corrupts the WAL index and

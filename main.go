@@ -21,14 +21,22 @@ import (
 	"nukumizu-backend/utils"
 )
 
+// CommitHash and BuildTime are set at build time using -ldflags.
+var (
+	CommitHash string
+	BuildTime  string
+)
+
 // SoftwareInfo holds build metadata.
 type SoftwareInfo struct {
 	Name        string
 	Version     string
 	Developer   string
 	BuildVer    int16
+	CommitHash  string
 	Description string
 	BuildType   string
+	BuildTime   string
 }
 
 var softwareInfo = SoftwareInfo{
@@ -36,8 +44,10 @@ var softwareInfo = SoftwareInfo{
 	Version:     "0.1.0",
 	Developer:   "Madobi Nanami",
 	BuildVer:    1,
+	CommitHash:  CommitHash,
 	Description: "Remote server monitoring and command execution subsystem for Komari",
 	BuildType:   "Debug",
+	BuildTime:   BuildTime,
 }
 
 func main() {
@@ -46,7 +56,7 @@ func main() {
 	flag.Parse()
 
 	// Log startup banner.
-	postLog.Info(fmt.Sprintf("%s Ver.%s.%d.%s Developed by %s", softwareInfo.Name, softwareInfo.Version, softwareInfo.BuildVer, softwareInfo.BuildType, softwareInfo.Developer))
+	postLog.Info(fmt.Sprintf("%s Ver.%s.%d.%s.%s Developed by %s at %s", softwareInfo.Name, softwareInfo.Version, softwareInfo.BuildVer, softwareInfo.BuildType, softwareInfo.CommitHash, softwareInfo.Developer, softwareInfo.BuildTime))
 
 	// Load configuration.
 	cfg, err := config.LoadConfig(*configPath)
