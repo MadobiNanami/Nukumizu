@@ -261,11 +261,7 @@ func startBackgroundTasks(_ *config.Config) {
 			}
 			tracker := node.GetTracker()
 			if tracker != nil {
-				nodeNames := make(map[string]string, len(nodes))
-				for _, n := range nodes {
-					nodeNames[n.UUID] = n.Name
-				}
-				tracker.UpdateNodeList(nodeNames)
+				tracker.UpdateNodeList(komari.BuildNodeListData(nodes))
 			}
 		}
 	}()

@@ -65,6 +65,8 @@ func (m *Manager) RouteCommand(cmd Command) (string, error) {
 		return handleReboot(cmd)
 	case "run":
 		return handleRun(cmd)
+	case "info":
+		return handleInfo(cmd)
 	default:
 		return "", nil
 	}
@@ -185,6 +187,66 @@ func handleRun(cmd Command) (string, error) {
 	cfg := config.GetConfig()
 	params := template.BuildParamsFromExecResult(uuidArg, uuidArg, command, formatTaskResults(results))
 	return template.Render(cfg.ControllerMessage.ServerExecuteResult, params), nil
+}
+
+func handleInfo(cmd Command) (string, error) {
+	if len(cmd.Args) < 1 {
+		return "Usage: /info <uuid>", nil
+	}
+
+	uuid := cmd.Args[0]
+	tracker := node.GetTracker()
+	n, exists := tracker.GetNode(uuid)
+	if !exists {
+		return fmt.Sprintf("Server with UUID %s not found", uuid), nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Server: %s (%s)\n", n.Name, n.UUID))
+
+	if n.Info == nil {
+		sb.WriteString("No static info available for this server.\n")
+		return sb.String(), nil
+	}
+
+	sb.WriteString(fmt.Sprintf("OS: %s\n", n.Info.OS.Name))
+	if n.Info.OS.KernelVersion != "" {
+		sb.WriteString(fmt.Sprintf("Kernel: %s\n", n.Info.OS.KernelVersion))
+	}
+	sb.WriteString(fmt.Sprintf("CPU: %s (%d cores, %s)\n", n.Info.CPU.Model, n.Info.CPU.Cores, n.Info.CPU.Arch))
+	sb.WriteString(fmt.Sprintf("RAM: %s\n", formatBytes(n.Info.RAM.Total)))
+	sb.WriteString(fmt.Sprintf("Swap: %s\n", formatBytes(n.Info.SWAP.Total)))
+	sb.WriteString(fmt.Sprintf("Disk: %s\n", formatBytes(n.Info.Disk.Total)))
+	if n.Info.BillingCycle != "" {
+		sb.WriteString(fmt.Sprintf("Billing Cycle: %s\n", n.Info.BillingCycle))
+	}
+	if n.Info.Price > 0 {
+		sb.WriteString(fmt.Sprintf("Price: %.2f\n", n.Info.Price))
+	}
+	if n.Info.Group != "" {
+		sb.WriteString(fmt.Sprintf("Group: %s\n", n.Info.Group))
+	}
+	if n.Info.Tags != "" {
+		sb.WriteString(fmt.Sprintf("Tags: %s\n", n.Info.Tags))
+	}
+
+	return sb.String(), nil
+}
+
+// formatBytes renders a byte count in a human-readable form.
+func formatBytes(b int64) string {
+	const (
+		mb = 1024 * 1024
+		gb = 1024 * mb
+	)
+	switch {
+	case b >= gb:
+		return fmt.Sprintf("%.2f GB", float64(b)/float64(gb))
+	case b >= mb:
+		return fmt.Sprintf("%.2f MB", float64(b)/float64(mb))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
 }
 
 func formatTaskResults(results []komari.TaskResult) string {

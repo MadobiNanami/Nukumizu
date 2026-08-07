@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"nukumizu-backend/config"
+	"nukumizu-backend/internal/node"
 	"nukumizu-backend/postLog"
 )
 
@@ -203,6 +204,35 @@ func (c *Client) FetchNodes() ([]NodeInfo, error) {
 
 	postLog.Info(fmt.Sprintf("Fetched %d nodes from Komari", len(nodes)))
 	return nodes, nil
+}
+
+// BuildNodeListData converts the Komari node list into the tracker's input,
+// carrying each node's static Info metadata alongside its name. It is used
+// whenever the node list is fetched (startup login, reconnect, periodic refresh)
+// so the tracker keeps the Info of every node up to date.
+func BuildNodeListData(nodes []NodeInfo) map[string]node.NodeListEntry {
+	entries := make(map[string]node.NodeListEntry, len(nodes))
+	for _, n := range nodes {
+		info := &node.Info{}
+		info.OS.Name = n.OS
+		info.OS.KernelVersion = n.KernelVersion
+		info.CPU.Model = n.CPUName
+		info.CPU.Cores = n.CPUCores
+		info.CPU.Arch = n.Arch
+		info.RAM.Total = n.MemTotal
+		info.SWAP.Total = n.SwapTotal
+		info.Disk.Total = n.DiskTotal
+		info.BillingCycle = fmt.Sprintf("%d", n.BillingCycle)
+		info.Price = n.Price
+		info.Group = n.Group
+		info.Tags = n.Tags
+
+		entries[n.UUID] = node.NodeListEntry{
+			Name: n.Name,
+			Info: info,
+		}
+	}
+	return entries
 }
 
 // FetchRecent retrieves the recent status for a specific node.

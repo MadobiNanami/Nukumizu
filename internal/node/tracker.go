@@ -46,6 +46,38 @@ type Report struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
+type Info struct {
+	OS struct {
+		Name          string `json:"os"`
+		KernelVersion string `json:"kernel_version"`
+	} `json:"os"`
+	CPU struct {
+		Model string `json:"cpu"`
+		Cores int    `json:"cpu_cores"`
+		Arch  string `json:"arch"`
+	} `json:"cpu"`
+	RAM struct {
+		Total int64 `json:"mem_total"`
+	} `json:"ram"`
+	SWAP struct {
+		Total int64 `json:"swap_total"`
+	} `json:"swap"`
+	Disk struct {
+		Total int64 `json:"disk_total"`
+	} `json:"disk"`
+	BillingCycle string  `json:"billing_cycle"`
+	Price        float64 `json:"price"`
+	Group        string  `json:"group"`
+	Tags         string  `json:"tags"`
+}
+
+// NodeListEntry is the static metadata of a node from the Komari node list,
+// passed to the tracker alongside the status data.
+type NodeListEntry struct {
+	Name string
+	Info *Info
+}
+
 // Node holds all tracked information about a single server node.
 type Node struct {
 	UUID         string
@@ -53,6 +85,7 @@ type Node struct {
 	Online       bool
 	LatestReport *Report
 	LastUpdated  time.Time
+	Info         *Info
 }
 
 // StatusChange represents a node status transition.
@@ -126,36 +159,39 @@ func (t *Tracker) fireCallbacks(change StatusChange) {
 	}
 }
 
-// UpdateNodeList replaces the full node list and updates the uuid→name map.
-// nodeNames maps UUID → node name from the Komari node list.
-func (t *Tracker) UpdateNodeList(nodeNames map[string]string) {
+// UpdateNodeList replaces the full node list and updates each node's name and
+// static Info metadata. entries maps UUID → node metadata from the Komari node
+// list.
+func (t *Tracker) UpdateNodeList(entries map[string]NodeListEntry) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	// The node list defines the set of nodes to wait for during the initial
 	// status refresh.
-	t.knownUUIDs = make(map[string]bool, len(nodeNames))
-	for uuid := range nodeNames {
+	t.knownUUIDs = make(map[string]bool, len(entries))
+	for uuid := range entries {
 		t.knownUUIDs[uuid] = true
 	}
 
-	t.uuidToName = make(map[string]string, len(nodeNames))
-	for uuid, name := range nodeNames {
-		t.uuidToName[uuid] = name
+	t.uuidToName = make(map[string]string, len(entries))
+	for uuid, entry := range entries {
+		t.uuidToName[uuid] = entry.Name
 		// Ensure node entry exists.
 		if _, exists := t.nodes[uuid]; !exists {
 			t.nodes[uuid] = &Node{
 				UUID:   uuid,
-				Name:   name,
+				Name:   entry.Name,
 				Online: false,
+				Info:   entry.Info,
 			}
 		} else {
-			// Update name in case it changed.
-			t.nodes[uuid].Name = name
+			// Update name/info in case they changed.
+			t.nodes[uuid].Name = entry.Name
+			t.nodes[uuid].Info = entry.Info
 		}
 	}
 
-	// postLog.Debug(fmt.Sprintf("Node list updated: %d nodes", len(nodeNames)))
+	// postLog.Debug(fmt.Sprintf("Node list updated: %d nodes", len(entries)))
 }
 
 // UpdateStatus processes a WebSocket status update from Komari.
@@ -375,6 +411,10 @@ func (t *Tracker) GetNode(uuid string) (*Node, bool) {
 		reportCopy := *node.LatestReport
 		nodeCopy.LatestReport = &reportCopy
 	}
+	if node.Info != nil {
+		infoCopy := *node.Info
+		nodeCopy.Info = &infoCopy
+	}
 	return &nodeCopy, true
 }
 
@@ -388,6 +428,10 @@ func (t *Tracker) GetAllNodes() []*Node {
 		if node.LatestReport != nil {
 			reportCopy := *node.LatestReport
 			nodeCopy.LatestReport = &reportCopy
+		}
+		if node.Info != nil {
+			infoCopy := *node.Info
+			nodeCopy.Info = &infoCopy
 		}
 		result = append(result, &nodeCopy)
 	}

@@ -350,11 +350,7 @@ func (w *WSClient) tryReconnect() {
 		} else {
 			tracker := node.GetTracker()
 			if tracker != nil {
-				nodeNames := make(map[string]string, len(nodes))
-				for _, n := range nodes {
-					nodeNames[n.UUID] = n.Name
-				}
-				tracker.UpdateNodeList(nodeNames)
+				tracker.UpdateNodeList(BuildNodeListData(nodes))
 			}
 		}
 	}
@@ -431,11 +427,7 @@ func LoginAndStart() error {
 
 	tracker := node.GetTracker()
 	if tracker != nil {
-		nodeNames := make(map[string]string, len(nodes))
-		for _, n := range nodes {
-			nodeNames[n.UUID] = n.Name
-		}
-		tracker.UpdateNodeList(nodeNames)
+		tracker.UpdateNodeList(BuildNodeListData(nodes))
 	}
 
 	return nil
