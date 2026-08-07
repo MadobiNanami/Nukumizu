@@ -14,8 +14,8 @@ import (
 	"nukumizu-backend/database"
 	"nukumizu-backend/internal/controller"
 	"nukumizu-backend/internal/controller/pipes"
-	"nukumizu-backend/internal/komari"
 	"nukumizu-backend/internal/controller/pipes/qq_napcat"
+	"nukumizu-backend/internal/komari"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/postLog"
 	"nukumizu-backend/utils"
@@ -289,4 +289,19 @@ func startBackgroundTasks(_ *config.Config) {
 			}
 		})
 	}
+
+	// Safety net for the initial refresh gate: if some node never reports a
+	// status, force-complete the initial refresh after a grace period so status
+	// notifications cannot stay blocked forever.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				postLog.Error(fmt.Sprintf("Bootstrap timeout panic: %v", r))
+			}
+		}()
+		time.Sleep(2 * time.Minute) // Add 2 minutes grace period to allow nodes to report status.
+		if tracker := node.GetTracker(); tracker != nil {
+			tracker.CompleteBootstrap()
+		}
+	}()
 }

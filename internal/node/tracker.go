@@ -57,12 +57,12 @@ type Node struct {
 
 // StatusChange represents a node status transition.
 type StatusChange struct {
-	Event       string // "Online" or "Offline"
-	UUID        string
-	Name        string
-	Message     string
-	OldOnline   bool
-	NewOnline   bool
+	Event     string // "Online" or "Offline"
+	UUID      string
+	Name      string
+	Message   string
+	OldOnline bool
+	NewOnline bool
 }
 
 // StatusChangeCallback is called when a node's online status changes.
@@ -71,11 +71,18 @@ type StatusChangeCallback func(change StatusChange)
 // Tracker maintains the in-memory state of all monitored nodes.
 // All methods are thread-safe.
 type Tracker struct {
-	mu           sync.RWMutex
-	nodes        map[string]*Node      // uuid → Node
-	uuidToName   map[string]string     // uuid → name (from node list)
-	onlineSet    map[string]bool       // which uuids are currently online
-	callbacks    []StatusChangeCallback
+	mu         sync.RWMutex
+	nodes      map[string]*Node  // uuid → Node
+	uuidToName map[string]string // uuid → name (from node list)
+	onlineSet  map[string]bool   // which uuids are currently online
+	callbacks  []StatusChangeCallback
+
+	// Initial-refresh gating: status-change notifications are suppressed until
+	// every node from the Komari node list has delivered a status update, so the
+	// startup state is treated as a baseline rather than a flood of changes.
+	knownUUIDs    map[string]bool // uuids from the Komari node list
+	reportedUUIDs map[string]bool // node-list uuids that have reported status
+	bootstrapDone bool            // true once the initial refresh has finished
 }
 
 var globalTracker *Tracker
@@ -83,9 +90,11 @@ var globalTracker *Tracker
 // InitTracker initializes the global node tracker.
 func InitTracker() {
 	globalTracker = &Tracker{
-		nodes:      make(map[string]*Node),
-		uuidToName: make(map[string]string),
-		onlineSet:  make(map[string]bool),
+		nodes:         make(map[string]*Node),
+		uuidToName:    make(map[string]string),
+		onlineSet:     make(map[string]bool),
+		knownUUIDs:    make(map[string]bool),
+		reportedUUIDs: make(map[string]bool),
 	}
 	postLog.Info("Node tracker initialized")
 }
@@ -120,6 +129,13 @@ func (t *Tracker) fireCallbacks(change StatusChange) {
 func (t *Tracker) UpdateNodeList(nodeNames map[string]string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
+	// The node list defines the set of nodes to wait for during the initial
+	// status refresh.
+	t.knownUUIDs = make(map[string]bool, len(nodeNames))
+	for uuid := range nodeNames {
+		t.knownUUIDs[uuid] = true
+	}
 
 	t.uuidToName = make(map[string]string, len(nodeNames))
 	for uuid, name := range nodeNames {
@@ -211,15 +227,63 @@ func (t *Tracker) UpdateStatus(onlineUUIDs []string, reports map[string]Report) 
 	}
 
 	t.onlineSet = newOnlineSet
+
+	// Track which node-list nodes have delivered a status update. The initial
+	// refresh is considered complete once every known node has reported at
+	// least once (either online or offline).
+	for _, uuid := range onlineUUIDs {
+		if t.knownUUIDs[uuid] {
+			t.reportedUUIDs[uuid] = true
+		}
+	}
+	for uuid := range reports {
+		if t.knownUUIDs[uuid] {
+			t.reportedUUIDs[uuid] = true
+		}
+	}
+
+	// Changes detected while the initial refresh is still in progress represent
+	// the nodes' startup state rather than real transitions, so suppress them.
+	suppressChanges := !t.bootstrapDone
+	if !t.bootstrapDone && t.allKnownNodesReported() {
+		t.bootstrapDone = true
+		postLog.Info(fmt.Sprintf("All %d nodes refreshed their status; status notifications enabled", len(t.knownUUIDs)))
+	}
 	t.mu.Unlock()
 
 	// Fire callbacks for each change (outside the lock).
 	for _, change := range changes {
+		if suppressChanges {
+			continue
+		}
 		postLog.Info(fmt.Sprintf("Node status change: %s [%s] - %s", change.Name, change.UUID, change.Event))
 		t.fireCallbacks(change)
 	}
 
 	return changes
+}
+
+// allKnownNodesReported returns true when every node from the Komari node list
+// has delivered at least one status update. Must be called with the lock held.
+func (t *Tracker) allKnownNodesReported() bool {
+	for uuid := range t.knownUUIDs {
+		if !t.reportedUUIDs[uuid] {
+			return false
+		}
+	}
+	return true
+}
+
+// CompleteBootstrap force-completes the initial status refresh gate. It is a
+// safety net so that notifications cannot be blocked forever by a node that
+// never reports a status. Calling it again is a no-op.
+func (t *Tracker) CompleteBootstrap() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.bootstrapDone {
+		t.bootstrapDone = true
+		postLog.Info("Initial node status refresh timeout reached; status notifications enabled")
+	}
 }
 
 // GetNode returns a copy of the node data for the given UUID.
@@ -300,4 +364,3 @@ func (t *Tracker) GetOfflineServers() []string {
 	}
 	return result
 }
-
