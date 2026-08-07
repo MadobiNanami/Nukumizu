@@ -12,6 +12,7 @@ import (
 
 	"nukumizu-backend/config"
 	"nukumizu-backend/database"
+	"nukumizu-backend/global"
 	"nukumizu-backend/internal/controller"
 	"nukumizu-backend/internal/controller/pipes"
 	"nukumizu-backend/internal/controller/pipes/qq_napcat"
@@ -27,36 +28,17 @@ var (
 	BuildTime  string
 )
 
-// SoftwareInfo holds build metadata.
-type SoftwareInfo struct {
-	Name        string
-	Version     string
-	Developer   string
-	BuildVer    int16
-	CommitHash  string
-	Description string
-	BuildType   string
-	BuildTime   string
-}
-
-var softwareInfo = SoftwareInfo{
-	Name:        "Nukumizu",
-	Version:     "0.1.0",
-	Developer:   "Madobi Nanami",
-	BuildVer:    1,
-	CommitHash:  CommitHash,
-	Description: "Remote server monitoring and command execution subsystem for Komari",
-	BuildType:   "Debug",
-	BuildTime:   BuildTime,
-}
-
 func main() {
+	// Set global software info.
+	global.SoftwareInfo.CommitHash = CommitHash
+	global.SoftwareInfo.BuildTime = BuildTime
+
 	// Parse CLI flags.
 	configPath := flag.String("config", "config.json", "Path to configuration file")
 	flag.Parse()
 
 	// Log startup banner.
-	postLog.Info(fmt.Sprintf("%s Ver.%s.%d.%s.%s Developed by %s at %s", softwareInfo.Name, softwareInfo.Version, softwareInfo.BuildVer, softwareInfo.BuildType, softwareInfo.CommitHash, softwareInfo.Developer, softwareInfo.BuildTime))
+	postLog.Info(fmt.Sprintf("%s Ver.%s.%d.%s.%s Developed by %s at %s", global.SoftwareInfo.Name, global.SoftwareInfo.Version, global.SoftwareInfo.BuildVer, global.SoftwareInfo.BuildType, global.SoftwareInfo.CommitHash, global.SoftwareInfo.Developer, global.SoftwareInfo.BuildTime))
 
 	// Load configuration.
 	cfg, err := config.LoadConfig(*configPath)
@@ -118,6 +100,22 @@ func main() {
 
 	// --- Initialize controllers ---
 	initControllers()
+
+	// Send the bot initialization message to all enabled bot controllers
+	// (QQ_NapCat, Telegram), then the server list right after it once the
+	// initial status refresh has completed so the list reflects the real
+	// online/offline state.
+	if mgr := controller.GetManager(); mgr != nil {
+		mgr.ShowBotInitMessage()
+
+		if tracker := node.GetTracker(); tracker != nil {
+			tracker.OnBootstrapDone(func() {
+				if m := controller.GetManager(); m != nil {
+					m.ShowBotServerList()
+				}
+			})
+		}
+	}
 
 	// --- Start background tasks ---
 	startBackgroundTasks(cfg)

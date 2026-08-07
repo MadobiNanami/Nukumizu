@@ -201,6 +201,22 @@ func (q *QQController) isSelfMessage(ev oneBotEvent) bool {
 	return false
 }
 
+// SendMessage sends an arbitrary message (e.g. the bot initialization message)
+// to all QQ trusted groups and admins.
+func (q *QQController) SendMessage(message string) error {
+	if !q.cfg.Enabled {
+		return nil
+	}
+
+	for _, groupID := range q.cfg.TrustedGroups {
+		q.sendGroupMessage(groupID, message)
+	}
+	for _, adminID := range q.cfg.Admins {
+		q.sendPrivateMessage(adminID, message)
+	}
+	return nil
+}
+
 // SendStatusChange sends a status change notification via QQ.
 func (q *QQController) SendStatusChange(change node.StatusChange) error {
 	if !q.cfg.Enabled {

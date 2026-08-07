@@ -71,11 +71,12 @@ type StatusChangeCallback func(change StatusChange)
 // Tracker maintains the in-memory state of all monitored nodes.
 // All methods are thread-safe.
 type Tracker struct {
-	mu         sync.RWMutex
-	nodes      map[string]*Node  // uuid → Node
-	uuidToName map[string]string // uuid → name (from node list)
-	onlineSet  map[string]bool   // which uuids are currently online
-	callbacks  []StatusChangeCallback
+	mu              sync.RWMutex
+	nodes           map[string]*Node  // uuid → Node
+	uuidToName      map[string]string // uuid → name (from node list)
+	onlineSet       map[string]bool   // which uuids are currently online
+	callbacks       []StatusChangeCallback
+	onBootstrapDone []func()
 
 	// Initial-refresh gating: status-change notifications are suppressed until
 	// the initial status snapshot has been received, so the startup state is
@@ -250,12 +251,20 @@ func (t *Tracker) UpdateStatus(onlineUUIDs []string, reports map[string]Report) 
 	}
 
 	suppressChanges := !t.bootstrapDone || firstSnapshot
+	bootstrapDoneNow := false
 	if !t.bootstrapDone && t.refreshComplete(reports) {
 		t.bootstrapDone = true
+		bootstrapDoneNow = true
 		postLog.Info(fmt.Sprintf("Initial node status refresh complete (%d/%d nodes reported); status notifications enabled",
 			len(t.reportedUUIDs), len(t.knownUUIDs)))
 	}
 	t.mu.Unlock()
+
+	// Notify startup listeners (e.g. server list sender) once the initial
+	// refresh has finished.
+	if bootstrapDoneNow {
+		t.fireBootstrapDone()
+	}
 
 	// Fire callbacks for each change (outside the lock).
 	for _, change := range changes {
@@ -301,6 +310,40 @@ func (t *Tracker) refreshComplete(currentReports map[string]Report) bool {
 	return true
 }
 
+// OnBootstrapDone registers a callback invoked once the initial status refresh
+// completes (e.g. to send the startup server list). If the refresh has already
+// completed, the callback is invoked immediately. Each callback fires exactly
+// once.
+func (t *Tracker) OnBootstrapDone(cb func()) {
+	t.mu.Lock()
+	t.onBootstrapDone = append(t.onBootstrapDone, cb)
+	if !t.bootstrapDone {
+		t.mu.Unlock()
+		return
+	}
+	// Already complete — collect everything pending and fire outside the lock.
+	cbs := t.onBootstrapDone
+	t.onBootstrapDone = nil
+	t.mu.Unlock()
+
+	for _, c := range cbs {
+		c()
+	}
+}
+
+// fireBootstrapDone notifies all registered callbacks that the initial status
+// refresh is complete. Must be called with the lock NOT held.
+func (t *Tracker) fireBootstrapDone() {
+	t.mu.Lock()
+	cbs := t.onBootstrapDone
+	t.onBootstrapDone = nil
+	t.mu.Unlock()
+
+	for _, cb := range cbs {
+		cb()
+	}
+}
+
 // CompleteBootstrap force-completes the initial status refresh gate. It is a
 // safety net so that notifications cannot be blocked forever when no status
 // snapshot is ever received. It does not mark a snapshot as received, so the
@@ -308,11 +351,14 @@ func (t *Tracker) refreshComplete(currentReports map[string]Report) bool {
 // again is a no-op.
 func (t *Tracker) CompleteBootstrap() {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if !t.bootstrapDone {
-		t.bootstrapDone = true
-		postLog.Info("Initial node status refresh timeout reached; status notifications enabled")
+	if t.bootstrapDone {
+		t.mu.Unlock()
+		return
 	}
+	t.bootstrapDone = true
+	postLog.Info("Initial node status refresh timeout reached; status notifications enabled")
+	t.mu.Unlock()
+	t.fireBootstrapDone()
 }
 
 // GetNode returns a copy of the node data for the given UUID.

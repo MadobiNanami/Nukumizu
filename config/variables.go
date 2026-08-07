@@ -9,10 +9,10 @@ type SystemConfig struct {
 
 // DebugConfig holds debug-level configuration.
 type DebugConfig struct {
-	ShowNapcatMsg  bool `json:"showNapcatMsg"`
-	ShowNapcatAction bool `json:"showNapcatAction"`
-	ShowTelegramMsg bool `json:"showTelegramMsg"`
-	ShowTriggerCmdEcho bool `json:"showTriggerCmdEcho"`
+	ShowNapcatMsg       bool `json:"showNapcatMsg"`
+	ShowNapcatAction    bool `json:"showNapcatAction"`
+	ShowTelegramMsg     bool `json:"showTelegramMsg"`
+	ShowTriggerCmdEcho  bool `json:"showTriggerCmdEcho"`
 	NapcatIgnoreSelfMsg bool `json:"napcatIgnoreSelfMsg"`
 }
 
@@ -90,6 +90,7 @@ type ControllerMethodConfig struct {
 
 // ControllerMessageConfig holds message templates for controller responses.
 type ControllerMessageConfig struct {
+	BotStarted          string `json:"BOT_STARTED"`
 	ServerStatusChanged string `json:"SERVER_STATUS_CHANGED"`
 	ServerList          string `json:"SERVER_LIST"`
 	ServerExecuteResult string `json:"SERVER_EXECUTE_RESULT"`

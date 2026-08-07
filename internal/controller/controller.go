@@ -31,6 +31,15 @@ type Controller interface {
 	SendExecuteResult(serverName, serverUUID, command, result string) error
 }
 
+// BotController is implemented by controllers that act as chat bots and can
+// deliver arbitrary messages, such as the bot initialization message on startup.
+// Only bot-type pipes (QQ/NapCat, Telegram) implement it; notification-only
+// pipes (email, ntfy, webhook) do not.
+type BotController interface {
+	Controller
+	SendMessage(message string) error
+}
+
 // Manager manages all controller instances and routes events.
 type Manager struct {
 	mu          sync.RWMutex
@@ -58,6 +67,56 @@ func (m *Manager) Register(c Controller) {
 	defer m.mu.Unlock()
 	m.controllers[c.Name()] = c
 	postLog.Info("Controller registered: " + c.Name())
+}
+
+// ShowBotInitMessage sends the bot initialization message to all enabled
+// bot controllers (QQ/NapCat and Telegram). Notification-only pipes that do
+// not implement BotController are skipped.
+func (m *Manager) ShowBotInitMessage() {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	cfg := config.GetConfig()
+	params := template.BuildBotInitializationMsgParams()
+	message := template.Render(cfg.ControllerMessage.BotStarted, params)
+
+	for _, ctrl := range m.controllers {
+		if !ctrl.IsEnabled() {
+			continue
+		}
+		bot, ok := ctrl.(BotController)
+		if !ok {
+			continue // Notification-only pipe (email/ntfy/webhook), not a bot.
+		}
+		if err := bot.SendMessage(message); err != nil {
+			postLog.Warning(fmt.Sprintf("Controller %s failed to send init message: %v", bot.Name(), err))
+		}
+	}
+}
+
+// ShowBotServerList sends the server list to all enabled bot controllers. The
+// message content is identical to the /list command (same template and
+// parameters).
+func (m *Manager) ShowBotServerList() {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	cfg := config.GetConfig()
+	params := template.BuildParamsFromServerList()
+	message := template.Render(cfg.ControllerMessage.ServerList, params)
+
+	for _, ctrl := range m.controllers {
+		if !ctrl.IsEnabled() {
+			continue
+		}
+		bot, ok := ctrl.(BotController)
+		if !ok {
+			continue // Notification-only pipe (email/ntfy/webhook), not a bot.
+		}
+		if err := bot.SendMessage(message); err != nil {
+			postLog.Warning(fmt.Sprintf("Controller %s failed to send server list: %v", bot.Name(), err))
+		}
+	}
 }
 
 // NotifyStatusChange sends a status change notification to all enabled controllers.

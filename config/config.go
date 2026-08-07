@@ -88,6 +88,9 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	// Apply default message templates if not specified.
+	if cfg.ControllerMessage.BotStarted == "" {
+		cfg.ControllerMessage.BotStarted = "Nukumizu Alert Bot Started\nVersion: {{ softwareVersion }}.{{ softwareBuildVer }}.{{ softwareCommitHash }}.{{ softwareBuildType }}\nDeveloper: {{ softwareDeveloper }}\nTime: {{ time }}"
+	}
 	if cfg.ControllerMessage.ServerStatusChanged == "" {
 		cfg.ControllerMessage.ServerStatusChanged = "Server Status Changed Alert\n{{ serverName }} - {{ upStatus }}\nEvent: {{ event }}\nServer Name: {{ serverName }}\nMessage: {{ message }}\nTime: {{ time }}"
 	}

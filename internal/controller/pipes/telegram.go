@@ -92,6 +92,17 @@ func (t *TelegramController) processCommand(cmd controller.Command) string {
 	return response
 }
 
+// SendMessage sends an arbitrary message (e.g. the bot initialization message)
+// via Telegram. The Telegram Bot API integration is currently a stub, so this
+// only logs the message for now.
+func (t *TelegramController) SendMessage(message string) error {
+	if !t.cfg.Enabled || t.cfg.BotToken == "" {
+		return nil
+	}
+	postLog.Debug("Telegram init message: " + message)
+	return nil
+}
+
 // SendStatusChange sends a status change notification via Telegram.
 func (t *TelegramController) SendStatusChange(change node.StatusChange) error {
 	if !t.cfg.Enabled || t.cfg.BotToken == "" {
