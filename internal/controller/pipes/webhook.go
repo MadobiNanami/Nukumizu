@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"nukumizu-backend/config"
+	"nukumizu-backend/internal/netproxy"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
 	"nukumizu-backend/postLog"
@@ -22,10 +23,8 @@ type WebhookController struct {
 // NewWebhookController creates a new Webhook controller.
 func NewWebhookController(cfg config.WebhookConfig) *WebhookController {
 	return &WebhookController{
-		cfg: cfg,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		cfg:        cfg,
+		httpClient: netproxy.HTTPClient(cfg.NetworkUseProxy, 10*time.Second),
 	}
 }
 

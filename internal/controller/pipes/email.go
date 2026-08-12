@@ -6,6 +6,7 @@ import (
 	gomail "gopkg.in/mail.v2"
 
 	"nukumizu-backend/config"
+	"nukumizu-backend/internal/netproxy"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
 	"nukumizu-backend/postLog"
@@ -18,6 +19,13 @@ type EmailController struct {
 
 // NewEmailController creates a new Email controller.
 func NewEmailController(cfg config.EmailConfig) *EmailController {
+	if cfg.NetworkUseProxy {
+		// Route SMTP through the HTTP CONNECT proxy. NetDialTimeout is
+		// gomail's documented hook for overriding how the SMTP connection is
+		// dialed. There is a single global email channel, so overriding it
+		// unconditionally when the flag is set is safe.
+		gomail.NetDialTimeout = netproxy.DialWithTimeout(true)
+	}
 	return &EmailController{cfg: cfg}
 }
 

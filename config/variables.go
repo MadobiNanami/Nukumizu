@@ -2,9 +2,10 @@ package config
 
 // SystemConfig holds system-level configuration.
 type SystemConfig struct {
-	DebugMode  bool   `json:"debugMode"`
-	ListenAddr string `json:"listenAddr"`
-	ListenPort string `json:"listenPort"`
+	DebugMode    bool   `json:"debugMode"`
+	ListenAddr   string `json:"listenAddr"`
+	ListenPort   string `json:"listenPort"`
+	NetworkProxy string `json:"networkProxy"`
 }
 
 // DebugConfig holds debug-level configuration.
@@ -31,53 +32,58 @@ type KomariConfig struct {
 
 // QQConfig holds QQ (Napcat) Bot controller configuration.
 type QQConfig struct {
-	Enabled       bool     `json:"enabled"`
-	NapcatAddr    string   `json:"napcatAddr"`
-	NapcatPort    string   `json:"napcatPort"`
-	NapcatToken   string   `json:"napcatToken"`
-	BotQQID       int64    `json:"botQQID"`
-	ListenMethod  string   `json:"listenMethod"`
-	Admins        []string `json:"admins"`
-	TrustedGroups []string `json:"trustedGroups"`
+	Enabled         bool     `json:"enabled"`
+	NetworkUseProxy bool     `json:"networkUseProxy"`
+	NapcatAddr      string   `json:"napcatAddr"`
+	NapcatPort      string   `json:"napcatPort"`
+	NapcatToken     string   `json:"napcatToken"`
+	BotQQID         int64    `json:"botQQID"`
+	ListenMethod    string   `json:"listenMethod"`
+	Admins          []string `json:"admins"`
+	TrustedGroups   []string `json:"trustedGroups"`
 }
 
 // TelegramConfig holds Telegram Bot controller configuration.
 type TelegramConfig struct {
-	Enabled       bool     `json:"enabled"`
-	BotToken      string   `json:"botToken"`
-	ListenMethod  string   `json:"listenMethod"`
-	Admins        []string `json:"admins"`
-	TrustedGroups []string `json:"trustedGroups"`
+	Enabled         bool     `json:"enabled"`
+	NetworkUseProxy bool     `json:"networkUseProxy"`
+	BotToken        string   `json:"botToken"`
+	ListenMethod    string   `json:"listenMethod"`
+	Admins          []string `json:"admins"`
+	TrustedGroups   []string `json:"trustedGroups"`
 }
 
 // EmailConfig holds Email notification controller configuration.
 type EmailConfig struct {
-	Enabled  bool     `json:"enabled"`
-	SMTPHost string   `json:"smtpHost"`
-	SMTPPort int      `json:"smtpPort"`
-	Username string   `json:"username"`
-	Password string   `json:"password"`
-	From     string   `json:"from"`
-	To       []string `json:"to"`
-	UseTLS   bool     `json:"useTLS"`
+	Enabled         bool     `json:"enabled"`
+	NetworkUseProxy bool     `json:"networkUseProxy"`
+	SMTPHost        string   `json:"smtpHost"`
+	SMTPPort        int      `json:"smtpPort"`
+	Username        string   `json:"username"`
+	Password        string   `json:"password"`
+	From            string   `json:"from"`
+	To              []string `json:"to"`
+	UseTLS          bool     `json:"useTLS"`
 }
 
 // NtfyConfig holds Ntfy notification controller configuration.
 type NtfyConfig struct {
-	Enabled  bool   `json:"enabled"`
-	Server   string `json:"server"`
-	Topic    string `json:"topic"`
-	Token    string `json:"token"`
-	Priority string `json:"priority"`
+	Enabled         bool   `json:"enabled"`
+	NetworkUseProxy bool   `json:"networkUseProxy"`
+	Server          string `json:"server"`
+	Topic           string `json:"topic"`
+	Token           string `json:"token"`
+	Priority        string `json:"priority"`
 }
 
 // WebhookConfig holds Webhook notification controller configuration.
 type WebhookConfig struct {
-	Enabled  bool              `json:"enabled"`
-	URL      string            `json:"url"`
-	Method   string            `json:"method"`
-	Headers  map[string]string `json:"headers"`
-	Template string            `json:"template"`
+	Enabled         bool              `json:"enabled"`
+	NetworkUseProxy bool              `json:"networkUseProxy"`
+	URL             string            `json:"url"`
+	Method          string            `json:"method"`
+	Headers         map[string]string `json:"headers"`
+	Template        string            `json:"template"`
 }
 
 // ControllerMethodConfig holds all controller method configurations.

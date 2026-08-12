@@ -39,7 +39,7 @@ type QQController struct {
 func NewQQController(cfg config.QQConfig) *QQController {
 	q := &QQController{cfg: cfg}
 	if cfg.Enabled {
-		q.napcatClient = NewClient(cfg.NapcatAddr, cfg.NapcatPort, cfg.NapcatToken)
+		q.napcatClient = NewClient(cfg.NapcatAddr, cfg.NapcatPort, cfg.NapcatToken, cfg.NetworkUseProxy)
 	}
 	return q
 }

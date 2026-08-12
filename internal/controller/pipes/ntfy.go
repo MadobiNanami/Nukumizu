@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"nukumizu-backend/config"
+	"nukumizu-backend/internal/netproxy"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
 	"nukumizu-backend/postLog"
@@ -21,10 +22,8 @@ type NtfyController struct {
 // NewNtfyController creates a new Ntfy controller.
 func NewNtfyController(cfg config.NtfyConfig) *NtfyController {
 	return &NtfyController{
-		cfg: cfg,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		cfg:        cfg,
+		httpClient: netproxy.HTTPClient(cfg.NetworkUseProxy, 10*time.Second),
 	}
 }
 

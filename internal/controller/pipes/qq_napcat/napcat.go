@@ -10,9 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"nukumizu-backend/postLog"
-	"nukumizu-backend/config"
 	"github.com/gorilla/websocket"
+
+	"nukumizu-backend/config"
+	"nukumizu-backend/internal/netproxy"
+	"nukumizu-backend/postLog"
 )
 
 // APIResponse mirrors NapCat's HTTP API response envelope.
@@ -30,6 +32,7 @@ type Client struct {
 	addr       string
 	port       string
 	token      string
+	useProxy   bool
 	httpClient *http.Client
 
 	connMu   sync.Mutex
@@ -38,16 +41,17 @@ type Client struct {
 	stopOnce sync.Once
 }
 
-// NewClient creates a NapCat client for the given host/port/token.
-func NewClient(addr, port, token string) *Client {
+// NewClient creates a NapCat client for the given host/port/token. When
+// useProxy is set, HTTP API calls and the WebSocket connection are routed
+// through the system-wide network proxy.
+func NewClient(addr, port, token string, useProxy bool) *Client {
 	return &Client{
-		addr:  addr,
-		port:  port,
-		token: token,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-		stopCh: make(chan struct{}),
+		addr:       addr,
+		port:       port,
+		token:      token,
+		useProxy:   useProxy,
+		httpClient: netproxy.HTTPClient(useProxy, 30*time.Second),
+		stopCh:     make(chan struct{}),
 	}
 }
 
@@ -265,7 +269,9 @@ func (c *Client) listenOnce(onEvent func(raw []byte)) {
 		header.Set("Authorization", "Bearer "+c.token)
 	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)
+	dialer := *websocket.DefaultDialer
+	dialer.Proxy = netproxy.ProxyFunc(c.useProxy)
+	conn, _, err := dialer.Dial(wsURL, header)
 	if err != nil {
 		postLog.Error(fmt.Sprintf("[Napcat] Failed to connect to NapCat WebSocket: %v", err))
 		return
