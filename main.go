@@ -16,6 +16,7 @@ import (
 	"nukumizu-backend/internal/controller"
 	"nukumizu-backend/internal/controller/pipes"
 	"nukumizu-backend/internal/controller/pipes/qq_napcat"
+	"nukumizu-backend/internal/controller/pipes/telegram"
 	"nukumizu-backend/internal/komari"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/postLog"
@@ -182,7 +183,7 @@ func initControllers() {
 	}()
 
 	// Telegram controller.
-	tgCtrl := pipes.NewTelegramController(cfg.ControllerMethod.Telegram)
+	tgCtrl := telegram.NewTelegramController(cfg.ControllerMethod.Telegram)
 	mgr.Register(tgCtrl)
 	go func() {
 		defer func() {
