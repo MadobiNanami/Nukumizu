@@ -13,6 +13,7 @@ type DebugConfig struct {
 	ShowNapcatAction    bool `json:"showNapcatAction"`
 	ShowTelegramMsg     bool `json:"showTelegramMsg"`
 	ShowTriggerCmdEcho  bool `json:"showTriggerCmdEcho"`
+	ShowKomariTaskEcho  bool `json:"showKomariTaskEcho"`
 	NapcatIgnoreSelfMsg bool `json:"napcatIgnoreSelfMsg"`
 }
 

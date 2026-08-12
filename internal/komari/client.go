@@ -292,7 +292,9 @@ func (c *Client) ExecTask(uuids []string, command string) (string, error) {
 		return "", fmt.Errorf("failed to parse komari task exec data: %w", err)
 	}
 
-	postLog.Info(fmt.Sprintf("Created Komari task %s for %d clients", result.TaskID, len(uuids)))
+	if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowKomariTaskEcho {
+		postLog.Debug(fmt.Sprintf("Created Komari task %s for %d clients", result.TaskID, len(uuids)))
+	}
 	return result.TaskID, nil
 }
 
@@ -333,7 +335,9 @@ func (c *Client) GetTaskResult(taskID string) ([]TaskResult, bool, error) {
 // PollTaskResult polls for task results every 1 second until all results are
 // available or 60 seconds have elapsed.
 func (c *Client) PollTaskResult(taskID string) ([]TaskResult, error) {
-	postLog.Info(fmt.Sprintf("Polling for Komari task %s results...", taskID))
+	if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowKomariTaskEcho {
+		postLog.Debug(fmt.Sprintf("Polling for Komari task %s results...", taskID))
+	}
 
 	timeout := time.After(60 * time.Second)
 	ticker := time.NewTicker(1 * time.Second)
@@ -349,7 +353,9 @@ func (c *Client) PollTaskResult(taskID string) ([]TaskResult, error) {
 				return nil, err
 			}
 			if done {
-				postLog.Info(fmt.Sprintf("Task %s completed with %d results", taskID, len(results)))
+				if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowKomariTaskEcho {
+					postLog.Info(fmt.Sprintf("Task %s completed with %d results", taskID, len(results)))
+				}
 				return results, nil
 			}
 		}

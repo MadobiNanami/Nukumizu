@@ -183,6 +183,10 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
 	response, err := controller.GetManager().Trigger(parsed, q.cfg.TrustedGroups, q.cfg.Admins, q.cfg.ListenMethod)
+	cfg := config.GetConfig()
+	if cfg.System.DebugMode && cfg.Debug.ShowTriggerCmdEcho {
+		postLog.Debug(fmt.Sprintf("[qq_napcat] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
+	}
 	if err != nil {
 		postLog.Error("Napcat command processing failed: " + err.Error())
 		return ""

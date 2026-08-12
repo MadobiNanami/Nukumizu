@@ -8,7 +8,6 @@ import (
 	"nukumizu-backend/internal/komari"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
-	"nukumizu-backend/postLog"
 )
 
 // Trigger validates an incoming command against the pipe's authorization
@@ -49,11 +48,6 @@ func (m *Manager) Trigger(cmd Command, trustedGroups, admins []string, listenMet
 // RouteCommand processes a parsed bot command and returns the response text.
 // The actual command execution for every pipe is unified here.
 func (m *Manager) RouteCommand(cmd Command) (string, error) {
-	cfg := config.GetConfig()
-	if cfg.System.DebugMode && cfg.Debug.ShowTriggerCmdEcho {
-		postLog.Debug("Trigger received command: /" + cmd.Command + " with args: " + strings.Join(cmd.Args, ", "))
-	}
-
 	switch cmd.Command {
 	case "help":
 		return handleHelp()
