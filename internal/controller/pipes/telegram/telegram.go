@@ -169,10 +169,14 @@ func (t *TelegramController) processCommand(cmd controller.Command) string {
 	parsed.ChatID = cmd.ChatID
 	parsed.ChatType = cmd.ChatType
 	parsed.SenderID = cmd.SenderID
+	parsed.Source = "telegram"
 
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
 	response, err := controller.GetManager().Trigger(parsed, t.cfg.TrustedGroups, t.resolvedAdminList(), t.cfg.ListenMethod)
+	if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowTriggerCmdEcho {
+		postLog.Debug(fmt.Sprintf("[telegram] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
+	}
 	if err != nil {
 		postLog.Error("Telegram command processing failed: " + err.Error())
 		return ""

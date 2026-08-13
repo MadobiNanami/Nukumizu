@@ -99,6 +99,7 @@ type ControllerMethodConfig struct {
 type ControllerMessageConfig struct {
 	BotStarted          string `json:"BOT_STARTED"`
 	BotHelp  		 	string `json:"BOT_HELP"`
+	Tg_BotStart         string `json:"TG_BOT_START"`
 	ServerStatusChanged string `json:"SERVER_STATUS_CHANGED"`
 	ServerList          string `json:"SERVER_LIST"`
 	ServerExecuteResult string `json:"SERVER_EXECUTE_RESULT"`

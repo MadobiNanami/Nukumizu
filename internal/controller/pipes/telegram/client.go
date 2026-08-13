@@ -182,8 +182,11 @@ func (c *Client) getUpdates(offset int64, limit, timeout int) ([]Update, error) 
 }
 
 // SendMessage sends a text message to a chat, splitting it into chunks that
-// fit Telegram's 4096-character limit. The text is sent without a parse mode so
-// template asterisks render literally.
+// fit Telegram's 4096-character limit. All messages are sent with
+// parse_mode=Markdown so fenced code blocks and inline formatting render as
+// rich text. Templates must stay valid under Telegram's legacy Markdown:
+// unpaired '*' or '_' characters (e.g. a lone '*Event: ...' label) make the
+// API reject the whole message.
 func (c *Client) SendMessage(chatID int64, text string) error {
 	if strings.TrimSpace(text) == "" {
 		return nil
@@ -198,8 +201,9 @@ func (c *Client) SendMessage(chatID int64, text string) error {
 
 func (c *Client) sendMessageChunk(chatID int64, text string) error {
 	params := url.Values{
-		"chat_id": {strconv.FormatInt(chatID, 10)},
-		"text":    {text},
+		"chat_id":    {strconv.FormatInt(chatID, 10)},
+		"text":       {text},
+		"parse_mode": {"Markdown"},
 	}
 	return c.call("sendMessage", params, nil)
 }

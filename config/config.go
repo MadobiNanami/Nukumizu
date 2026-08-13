@@ -94,6 +94,9 @@ func LoadConfig(configPath string) (*Config, error) {
 	if cfg.ControllerMessage.BotHelp == "" {
 		cfg.ControllerMessage.BotHelp = "Available commands:\n/help - Show this help message\n/list - List all servers\n/status <uuid> - Show status of a specific server\n/shutdown <uuid> - Shutdown a specific server\n/reboot <uuid> - Reboot a specific server\n/run <uuid> <command> - Run a command on a specific server\n/info - Show bot information"
 	}
+	if cfg.ControllerMessage.Tg_BotStart == "" {
+		cfg.ControllerMessage.Tg_BotStart = "Welcome to use Nukumizu Alert Bot!\nUse /help to see available commands."
+	}
 	if cfg.ControllerMessage.ServerStatusChanged == "" {
 		cfg.ControllerMessage.ServerStatusChanged = "Server Status Changed Alert\n{{ serverName }} - {{ upStatus }}\nEvent: {{ event }}\nServer Name: {{ serverName }}\nMessage: {{ message }}\nTime: {{ time }}"
 	}

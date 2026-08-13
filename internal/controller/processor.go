@@ -10,64 +10,6 @@ import (
 	"nukumizu-backend/internal/template"
 )
 
-// Trigger validates an incoming command against the pipe's authorization
-// config (trusted groups / admins) and, if authorized, processes it through
-// RouteCommand. It returns the response text to reply with; an empty response means
-// the command was discarded.
-//
-// All command handling across pipes is unified here: pipes only decide whether
-// a received message is a command, then hand the complete command over.
-func (m *Manager) Trigger(cmd Command, trustedGroups, admins []string, listenMethod string) (string, error) {
-	// Check whether the command arrived in a group or a private chat.
-	if cmd.ChatType == "group" {
-		// Group commands are only honored from trusted groups, otherwise discard.
-		if !IsTrustedGroup(cmd.ChatID, trustedGroups) {
-			return "", nil
-		}
-	}
-
-	// Commands that require special permission must be sent by an admin.
-	if IsAdminCommand(cmd.Command) {
-		if !IsAdmin(cmd.SenderID, admins) {
-			return "", nil
-		}
-	}
-
-	response, err := m.RouteCommand(cmd)
-	if err != nil {
-		return "", err
-	}
-
-	// In "at" listen mode, give feedback for unknown commands.
-	if response == "" && listenMethod == "at" {
-		return "Unknown command: /" + cmd.Command, nil
-	}
-	return response, nil
-}
-
-// RouteCommand processes a parsed bot command and returns the response text.
-// The actual command execution for every pipe is unified here.
-func (m *Manager) RouteCommand(cmd Command) (string, error) {
-	switch cmd.Command {
-	case "help":
-		return handleHelp()
-	case "list":
-		return handleList()
-	case "status":
-		return handleStatus(cmd)
-	case "shutdown":
-		return handleShutdown(cmd)
-	case "reboot":
-		return handleReboot(cmd)
-	case "run":
-		return handleRun(cmd)
-	case "info":
-		return handleInfo(cmd)
-	default:
-		return "", nil
-	}
-}
-
 func handleHelp() (string, error) {
 	cfg := config.GetConfig()
 	params := template.BuildBotInitializationMsgParams()
@@ -233,6 +175,12 @@ func handleInfo(cmd Command) (string, error) {
 	}
 
 	return sb.String(), nil
+}
+
+func telegram_handleStart() (string, error) {
+	cfg := config.GetConfig()
+	params := template.BuildBotInitializationMsgParams()
+	return template.Render(cfg.ControllerMessage.Tg_BotStart, params), nil
 }
 
 // formatBytes renders a byte count in a human-readable form.

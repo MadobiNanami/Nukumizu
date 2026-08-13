@@ -12,7 +12,8 @@ import (
 
 // Command represents a parsed bot command.
 type Command struct {
-	RawText  string
+	Source   string   // The source pipe (e.g., "telegram", "qq", "napcat")
+	RawText  string   // The raw text of the command message
 	Command  string   // The command word (e.g., "list", "status")
 	Args     []string // Command arguments
 	ChatID   int64    // Chat/group ID where the command was issued
