@@ -10,16 +10,16 @@ import (
 	"nukumizu-backend/internal/template"
 )
 
-func handleHelp() (string, error) {
+func handleHelp(cmd Command) (string, error) {
 	cfg := config.GetConfig()
 	params := template.BuildBotInitializationMsgParams()
-	return template.Render(cfg.ControllerMessage.BotHelp, params), nil
+	return template.Render(cfg.ControllerMessage.BotHelp, params, cmd.Source), nil
 }
 
-func handleList() (string, error) {
+func handleList(cmd Command) (string, error) {
 	cfg := config.GetConfig()
 	params := template.BuildParamsFromServerList()
-	return template.Render(cfg.ControllerMessage.ServerList, params), nil
+	return template.Render(cfg.ControllerMessage.ServerList, params, cmd.Source), nil
 }
 
 func handleStatus(cmd Command) (string, error) {
@@ -130,7 +130,7 @@ func handleRun(cmd Command) (string, error) {
 
 	cfg := config.GetConfig()
 	params := template.BuildParamsFromExecResult(uuidArg, uuidArg, command, formatTaskResults(results))
-	return template.Render(cfg.ControllerMessage.ServerExecuteResult, params), nil
+	return template.Render(cfg.ControllerMessage.ServerExecuteResult, params, cmd.Source), nil
 }
 
 func handleInfo(cmd Command) (string, error) {
@@ -180,7 +180,7 @@ func handleInfo(cmd Command) (string, error) {
 func telegram_handleStart() (string, error) {
 	cfg := config.GetConfig()
 	params := template.BuildBotInitializationMsgParams()
-	return template.Render(cfg.ControllerMessage.Tg_BotStart, params), nil
+	return template.Render(cfg.ControllerMessage.Tg_BotStart, params, "telegram"), nil
 }
 
 func handleGetIP(cmd Command) (string, error) {

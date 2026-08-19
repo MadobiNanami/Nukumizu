@@ -99,36 +99,56 @@ func BuildParamsFromExecResult(serverName, serverUUID, command, result string) P
 //   - {{ softwareBuildTime }} — software build time
 //   - {{ softwareDeveloper }} — software developer
 //   - {{ softwareDescription }} — software description
-func Render(tmpl string, params Params) string {
+func Render(tmpl string, params Params, source ...string) string {
 	result := tmpl
 
-	result = strings.ReplaceAll(result, "{{ time }}", params.Time)
-	result = strings.ReplaceAll(result, "{{ serverName }}", params.ServerName)
-	result = strings.ReplaceAll(result, "{{ serverUUID }}", params.ServerUUID)
-	result = strings.ReplaceAll(result, "{{ upStatus }}", params.UpStatus)
-	result = strings.ReplaceAll(result, "{{ event }}", params.Event)
-	result = strings.ReplaceAll(result, "{{ message }}", params.Message)
-	result = strings.ReplaceAll(result, "{{ command }}", params.Command)
-	result = strings.ReplaceAll(result, "{{ result }}", params.Result)
-	result = strings.ReplaceAll(result, "{{ list.onlineServers }}", params.OnlineServers)
-	result = strings.ReplaceAll(result, "{{ list.offlineServers }}", params.OfflineServers)
-	result = strings.ReplaceAll(result, "{{ softwareVersion }}", params.SoftwareVersion)
-	result = strings.ReplaceAll(result, "{{ softwareBuildVer }}", fmt.Sprintf("%d", params.SoftwareBuildVer))
-	result = strings.ReplaceAll(result, "{{ softwareCommitHash }}", params.SoftwareCommitHash)
-	result = strings.ReplaceAll(result, "{{ softwareBuildType }}", params.SoftwareBuildType)
-	result = strings.ReplaceAll(result, "{{ softwareBuildTime }}", params.SoftwareBuildTime)
-	result = strings.ReplaceAll(result, "{{ softwareDeveloper }}", params.SoftwareDeveloper)
-	result = strings.ReplaceAll(result, "{{ softwareDescription }}", params.SoftwareDescription)
-
+	if len(source) > 0 && source[0] == "telegram" {
+		// Telegram requires special formatting for code blocks and inline code.
+		result = strings.ReplaceAll(result, "{{ time }}", "**" + params.Time + "**")
+		result = strings.ReplaceAll(result, "{{ serverName }}", "**" + params.ServerName + "**")
+		result = strings.ReplaceAll(result, "{{ serverUUID }}", "`" + params.ServerUUID + "`")
+		result = strings.ReplaceAll(result, "{{ upStatus }}", "**" + params.UpStatus + "**")
+		result = strings.ReplaceAll(result, "{{ event }}", "**" + params.Event + "**")
+		result = strings.ReplaceAll(result, "{{ message }}", "`" + params.Message + "`")
+		result = strings.ReplaceAll(result, "{{ command }}", "`" + params.Command + "`")
+		result = strings.ReplaceAll(result, "{{ result }}", "```bash\n" + params.Result + "\n```")
+		result = strings.ReplaceAll(result, "{{ list.onlineServers }}", params.OnlineServers)
+		result = strings.ReplaceAll(result, "{{ list.offlineServers }}", params.OfflineServers)
+		result = strings.ReplaceAll(result, "{{ softwareVersion }}", params.SoftwareVersion)
+		result = strings.ReplaceAll(result, "{{ softwareBuildVer }}", fmt.Sprintf("%d", params.SoftwareBuildVer))
+		result = strings.ReplaceAll(result, "{{ softwareCommitHash }}", params.SoftwareCommitHash)
+		result = strings.ReplaceAll(result, "{{ softwareBuildType }}", params.SoftwareBuildType)
+		result = strings.ReplaceAll(result, "{{ softwareBuildTime }}", params.SoftwareBuildTime)
+		result = strings.ReplaceAll(result, "{{ softwareDeveloper }}", params.SoftwareDeveloper)
+		result = strings.ReplaceAll(result, "{{ softwareDescription }}", params.SoftwareDescription)
+	} else {
+		result = strings.ReplaceAll(result, "{{ time }}", params.Time)
+		result = strings.ReplaceAll(result, "{{ serverName }}", params.ServerName)
+		result = strings.ReplaceAll(result, "{{ serverUUID }}", params.ServerUUID)
+		result = strings.ReplaceAll(result, "{{ upStatus }}", params.UpStatus)
+		result = strings.ReplaceAll(result, "{{ event }}", params.Event)
+		result = strings.ReplaceAll(result, "{{ message }}", params.Message)
+		result = strings.ReplaceAll(result, "{{ command }}", params.Command)
+		result = strings.ReplaceAll(result, "{{ result }}", params.Result)
+		result = strings.ReplaceAll(result, "{{ list.onlineServers }}", params.OnlineServers)
+		result = strings.ReplaceAll(result, "{{ list.offlineServers }}", params.OfflineServers)
+		result = strings.ReplaceAll(result, "{{ softwareVersion }}", params.SoftwareVersion)
+		result = strings.ReplaceAll(result, "{{ softwareBuildVer }}", fmt.Sprintf("%d", params.SoftwareBuildVer))
+		result = strings.ReplaceAll(result, "{{ softwareCommitHash }}", params.SoftwareCommitHash)
+		result = strings.ReplaceAll(result, "{{ softwareBuildType }}", params.SoftwareBuildType)
+		result = strings.ReplaceAll(result, "{{ softwareBuildTime }}", params.SoftwareBuildTime)
+		result = strings.ReplaceAll(result, "{{ softwareDeveloper }}", params.SoftwareDeveloper)
+		result = strings.ReplaceAll(result, "{{ softwareDescription }}", params.SoftwareDescription)
+	}
 	return result
 }
 
 // FormatServerListEntry formats a single server entry for list display.
 func FormatServerListEntry(name, uuid string) string {
 	if name == "" {
-		return fmt.Sprintf("- %s", uuid)
+		return fmt.Sprintf("- `%s`", uuid)
 	}
-	return fmt.Sprintf("- %s (%s)", name, uuid)
+	return fmt.Sprintf("- %s (`%s`)", name, uuid)
 }
 
 // JoinServerListEntries joins formatted server entries with newlines.

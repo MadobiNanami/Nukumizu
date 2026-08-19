@@ -51,9 +51,9 @@ func (m *Manager) RouteCommand(cmd Command) (string, error) {
 	}
 	switch cmd.Command {
 	case "help":
-		return handleHelp()
+		return handleHelp(cmd)
 	case "list":
-		return handleList()
+		return handleList(cmd)
 	case "status":
 		return handleStatus(cmd)
 	case "shutdown":

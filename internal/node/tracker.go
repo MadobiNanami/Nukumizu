@@ -456,9 +456,9 @@ func (t *Tracker) GetOnlineServers() []string {
 	for uuid := range t.onlineSet {
 		name := t.uuidToName[uuid]
 		if name != "" {
-			result = append(result, fmt.Sprintf("- %s (%s)", name, uuid))
+			result = append(result, fmt.Sprintf("- %s (`%s`)", name, uuid))
 		} else {
-			result = append(result, fmt.Sprintf("- %s", uuid))
+			result = append(result, fmt.Sprintf("- `%s`", uuid))
 		}
 	}
 	return result
@@ -478,9 +478,9 @@ func (t *Tracker) GetOfflineServers() []string {
 	for uuid := range offlineSet {
 		name := t.uuidToName[uuid]
 		if name != "" {
-			result = append(result, fmt.Sprintf("- %s (%s)", name, uuid))
+			result = append(result, fmt.Sprintf("- %s (`%s`)", name, uuid))
 		} else {
-			result = append(result, fmt.Sprintf("- %s", uuid))
+			result = append(result, fmt.Sprintf("- `%s`", uuid))
 		}
 	}
 	return result
