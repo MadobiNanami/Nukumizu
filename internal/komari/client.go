@@ -17,7 +17,8 @@ import (
 	"nukumizu-backend/postLog"
 )
 
-// NodeInfo represents a single node from Komari's /api/nodes endpoint.
+// NodeInfo represents a single node as returned by Komari's
+// common:getNodes RPC2 method.
 type NodeInfo struct {
 	UUID             string  `json:"uuid"`
 	Name             string  `json:"name"`
@@ -34,6 +35,8 @@ type NodeInfo struct {
 	SwapTotal        int64   `json:"swap_total"`
 	DiskTotal        int64   `json:"disk_total"`
 	Weight           float64 `json:"weight"`
+	IPv4			 string  `json:"ipv4"`
+	IPv6			 string  `json:"ipv6"`
 	Price            float64 `json:"price"`
 	BillingCycle     int     `json:"billing_cycle"`
 	AutoRenewal      bool    `json:"auto_renewal"`
@@ -175,12 +178,23 @@ func (c *Client) GetSessionToken() string {
 	return c.sessionToken
 }
 
-// FetchNodes retrieves all nodes from Komari.
+// FetchNodes retrieves all nodes from Komari via the JSON-RPC2 endpoint.
 func (c *Client) FetchNodes() ([]NodeInfo, error) {
-	req, err := http.NewRequest("GET", c.baseURL+"/api/nodes", nil)
+	payload, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "common:getNodes",
+		"params":  map[string]any{},
+		"id":      1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal nodes RPC request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.baseURL+"/api/rpc2", bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nodes request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -188,18 +202,27 @@ func (c *Client) FetchNodes() ([]NodeInfo, error) {
 	}
 	defer resp.Body.Close()
 
-	var kr KomariResponse
-	if err := json.NewDecoder(resp.Body).Decode(&kr); err != nil {
-		return nil, fmt.Errorf("failed to parse komari nodes response: %w", err)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("komari nodes request failed: unexpected status code %d", resp.StatusCode)
 	}
 
-	if kr.Status != "success" {
-		return nil, fmt.Errorf("komari nodes request failed: %s", kr.Message)
+	var rpcResp jsonRpcResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return nil, fmt.Errorf("failed to parse komari nodes RPC response: %w", err)
 	}
 
-	var nodes []NodeInfo
-	if err := json.Unmarshal(kr.Data, &nodes); err != nil {
+	if rpcResp.Error != nil {
+		return nil, fmt.Errorf("komari nodes RPC error: %s", rpcResp.Error.Message)
+	}
+
+	var nodeMap map[string]NodeInfo
+	if err := json.Unmarshal(rpcResp.Result, &nodeMap); err != nil {
 		return nil, fmt.Errorf("failed to parse komari nodes data: %w", err)
+	}
+
+	nodes := make([]NodeInfo, 0, len(nodeMap))
+	for _, n := range nodeMap {
+		nodes = append(nodes, n)
 	}
 
 	postLog.Info(fmt.Sprintf("Fetched %d nodes from Komari", len(nodes)))
