@@ -249,6 +249,8 @@ func BuildNodeListData(nodes []NodeInfo) map[string]node.NodeListEntry {
 		info.Price = n.Price
 		info.Group = n.Group
 		info.Tags = n.Tags
+		info.IPv4 = n.IPv4
+		info.IPv6 = n.IPv6
 
 		entries[n.UUID] = node.NodeListEntry{
 			Name: n.Name,

@@ -64,6 +64,8 @@ func (m *Manager) RouteCommand(cmd Command) (string, error) {
 		return handleRun(cmd)
 	case "info":
 		return handleInfo(cmd)
+	case "getip":
+		return handleGetIP(cmd)
 	default:
 		return "", nil
 	}

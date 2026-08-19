@@ -69,6 +69,8 @@ type Info struct {
 	Price        float64 `json:"price"`
 	Group        string  `json:"group"`
 	Tags         string  `json:"tags"`
+	IPv4         string  `json:"ipv4"`
+	IPv6         string  `json:"ipv6"`
 }
 
 // NodeListEntry is the static metadata of a node from the Komari node list,

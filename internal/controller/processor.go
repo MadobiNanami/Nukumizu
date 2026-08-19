@@ -183,6 +183,40 @@ func telegram_handleStart() (string, error) {
 	return template.Render(cfg.ControllerMessage.Tg_BotStart, params), nil
 }
 
+func handleGetIP(cmd Command) (string, error) {
+	if len(cmd.Args) < 1 {
+		return "Usage: /getip <uuid>", nil
+	}
+
+	uuid := cmd.Args[0]
+	tracker := node.GetTracker()
+	n, exists := tracker.GetNode(uuid)
+	if !exists {
+		return fmt.Sprintf("Server with UUID %s not found", uuid), nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Server: %s (%s)\n", n.Name, n.UUID))
+
+	if n.Info == nil {
+		sb.WriteString("No IP info available for this server.\n")
+		return sb.String(), nil
+	}
+
+	if n.Info.IPv4 != "" {
+		sb.WriteString(fmt.Sprintf("IPv4: %s\n", n.Info.IPv4))
+	} else {
+		sb.WriteString("IPv4: Not available\n")
+	}
+	if n.Info.IPv6 != "" {
+		sb.WriteString(fmt.Sprintf("IPv6: %s\n", n.Info.IPv6))
+	} else {
+		sb.WriteString("IPv6: Not available\n")
+	}
+
+	return sb.String(), nil
+}
+
 // formatBytes renders a byte count in a human-readable form.
 func formatBytes(b int64) string {
 	const (
