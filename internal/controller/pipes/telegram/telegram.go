@@ -1,37 +1,71 @@
 package telegram
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 
 	"nukumizu-backend/config"
 	"nukumizu-backend/internal/controller"
+	"nukumizu-backend/internal/netproxy"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
 	"nukumizu-backend/postLog"
 )
 
-// TelegramController handles Telegram Bot interactions via long polling.
+const (
+	// pollTimeout is the getUpdates long-polling window requested from the API.
+	// The framework sends (pollTimeout - 1s) to getUpdates; apiTimeout, which
+	// also bounds the HTTP client, is kept well above it so a poll request is
+	// never cut short by the client.
+	pollTimeout = 30 * time.Second
+
+	// apiTimeout bounds individual Bot API calls (getMe, sendMessage, ...) and
+	// the initial token check in Start.
+	apiTimeout = 2 * time.Minute
+)
+
+// TelegramController handles Telegram Bot interactions via long polling. The
+// transport and update delivery are provided by the go-telegram/bot framework;
+// this type wires it into the unified controller/command pipeline.
 type TelegramController struct {
 	cfg    config.TelegramConfig
-	client *Client
-	bot    *User // The bot's own user object from getMe.
+	client *bot.Bot     // underlying go-telegram/bot client
+	self   *models.User // the bot's own user object from getMe
 
 	mu           sync.Mutex
 	usernameToID map[string]int64 // resolved @username -> numeric user ID
+
+	pollCtx    context.Context // cancelled by Stop to end long polling
+	pollCancel context.CancelFunc
 }
 
-// NewTelegramController creates a new Telegram controller.
+// NewTelegramController creates a new Telegram controller. When enabled, the
+// underlying bot client is built here (with the getMe handshake skipped) so
+// outbound messages can be sent as soon as the controller is registered; token
+// verification and polling are deferred to Start.
 func NewTelegramController(cfg config.TelegramConfig) *TelegramController {
 	t := &TelegramController{
 		cfg:          cfg,
 		usernameToID: make(map[string]int64),
 	}
-	if cfg.Enabled {
-		t.client = NewClient(cfg.BotToken, cfg.NetworkUseProxy)
+	t.pollCtx, t.pollCancel = context.WithCancel(context.Background())
+
+	if cfg.Enabled && strings.TrimSpace(cfg.BotToken) != "" {
+		b, err := t.newBot()
+		if err != nil {
+			postLog.Error("Failed to build Telegram client: " + err.Error())
+			return t
+		}
+		t.client = b
 	}
 	return t
 }
@@ -47,22 +81,22 @@ func (t *TelegramController) Start() error {
 		return nil
 	}
 	if t.client == nil {
-		postLog.Warning("Telegram controller enabled but client is nil")
-		return nil
-	}
-	if t.cfg.BotToken == "" {
-		postLog.Warning("Telegram controller enabled but no bot token configured")
+		if strings.TrimSpace(t.cfg.BotToken) == "" {
+			postLog.Warning("Telegram controller enabled but no bot token configured")
+		} else {
+			postLog.Warning("Telegram controller enabled but client is nil")
+		}
 		return nil
 	}
 
-	// The tutorial's first step: verify the token with getMe. The returned bot
-	// identity is used for @mention mode and echo prevention.
-	bot, err := t.client.GetMe()
+	ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
+	self, err := t.client.GetMe(ctx)
+	cancel()
 	if err != nil {
 		return fmt.Errorf("failed to verify Telegram bot token (getMe): %w", err)
 	}
-	t.bot = bot
-	postLog.Info(fmt.Sprintf("Telegram bot authenticated: @%s (id %d)", bot.Username, bot.ID))
+	t.self = self
+	postLog.Info(fmt.Sprintf("Telegram bot authenticated: @%s (id %d)", self.Username, self.ID))
 
 	postLog.Info("Telegram controller started (long polling)")
 	go func() {
@@ -71,17 +105,17 @@ func (t *TelegramController) Start() error {
 				postLog.Error(fmt.Sprintf("Telegram poll loop panic recovered: %v", r))
 			}
 		}()
-		t.client.Listen(t.handleUpdate)
+		// Start blocks until pollCtx is cancelled by Stop. Updates are delivered
+		// to the default handler registered in newBot.
+		t.client.Start(t.pollCtx)
 	}()
 
 	return nil
 }
 
-// Stop shuts down the Telegram controller and its poll loop.
+// Stop cancels the long-polling context and shuts down the controller.
 func (t *TelegramController) Stop() {
-	if t.client != nil {
-		t.client.Stop()
-	}
+	t.pollCancel()
 	postLog.Info("Telegram controller stopped")
 }
 
@@ -90,9 +124,20 @@ func (t *TelegramController) IsEnabled() bool {
 	return t.cfg.Enabled
 }
 
-// handleUpdate processes a single Telegram update received via long polling.
-func (t *TelegramController) handleUpdate(update Update) {
-	if update.Message == nil {
+// handleUpdate processes a single Telegram update received via long polling. It
+// is installed as the framework's default handler (every update with a Message
+// reaches it). Updates are processed sequentially because the bot is created
+// with WithNotAsyncHandlers, mirroring the original single-threaded poll loop.
+func (t *TelegramController) handleUpdate(_ context.Context, _ *bot.Bot, update *models.Update) {
+	// Protect the poll loop: a panic while handling one update must not take
+	// down long polling.
+	defer func() {
+		if r := recover(); r != nil {
+			postLog.Error(fmt.Sprintf("Telegram update handler panic recovered: %v", r))
+		}
+	}()
+
+	if update == nil || update.Message == nil {
 		return
 	}
 	msg := update.Message
@@ -106,11 +151,11 @@ func (t *TelegramController) handleUpdate(update Update) {
 	if msg.From == nil || msg.From.IsBot {
 		return
 	}
-	if t.bot != nil && msg.From.ID == t.bot.ID {
+	if t.self != nil && msg.From.ID == t.self.ID {
 		return
 	}
 
-	chatType := telegramChatType(msg.Chat.Type)
+	chatType := telegramChatType(string(msg.Chat.Type))
 	if chatType == "" {
 		return // channel or other unsupported chat type.
 	}
@@ -135,7 +180,7 @@ func (t *TelegramController) handleUpdate(update Update) {
 		return
 	}
 
-	if err := t.client.SendMessage(msg.Chat.ID, response); err != nil {
+	if err := t.sendMessage(msg.Chat.ID, response); err != nil {
 		postLog.Warning("Failed to send Telegram reply: " + err.Error())
 	}
 }
@@ -148,8 +193,8 @@ func (t *TelegramController) processCommand(cmd controller.Command) string {
 
 	// In "at" listen mode, require a mention of the bot and strip it before
 	// parsing, mirroring the QQ CQ-at behavior.
-	if t.cfg.ListenMethod == "at" && t.bot != nil && t.bot.Username != "" {
-		mention := "@" + t.bot.Username
+	if t.cfg.ListenMethod == "at" && t.self != nil && t.self.Username != "" {
+		mention := "@" + t.self.Username
 		if !strings.Contains(text, mention) {
 			return "" // Not mentioned, ignore.
 		}
@@ -271,7 +316,7 @@ func stripCommandBotSuffix(text string) string {
 
 // recordUser stores the numeric ID for a sender's username so admins configured
 // by username (rather than numeric ID) can be resolved later.
-func (t *TelegramController) recordUser(u *User) {
+func (t *TelegramController) recordUser(u *models.User) {
 	if u == nil || u.Username == "" {
 		return
 	}
@@ -349,7 +394,28 @@ func (t *TelegramController) sendAdminMessage(admin string, message string) {
 
 // sendToChat sends a message to a chat ID, logging failures.
 func (t *TelegramController) sendToChat(chatID int64, message string) {
-	if err := t.client.SendMessage(chatID, message); err != nil {
+	if err := t.sendMessage(chatID, message); err != nil {
 		postLog.Warning(fmt.Sprintf("Failed to send Telegram message to %d: %v", chatID, err))
 	}
+}
+
+// newBot builds the underlying go-telegram/bot client. getMe is skipped here so
+// the constructor stays non-blocking (outbound sends must work before Start
+// runs); the token is actually verified in Start. Requests are routed through
+// the network proxy when enabled, and poll errors are logged via postLog.
+func (t *TelegramController) newBot() (*bot.Bot, error) {
+	opts := []bot.Option{
+		bot.WithSkipGetMe(),
+		bot.WithHTTPClient(pollTimeout, netproxy.HTTPClient(t.cfg.NetworkUseProxy, apiTimeout)),
+		bot.WithDefaultHandler(t.handleUpdate),
+		bot.WithNotAsyncHandlers(),
+		bot.WithErrorsHandler(func(err error) {
+			if errors.Is(err, bot.ErrorConflict) {
+				postLog.Error("Telegram getUpdates conflict (409): another poller is using the same bot token. Ensure only one instance is polling.")
+			} else {
+				postLog.Warning("Telegram Bot API error: " + err.Error())
+			}
+		}),
+	}
+	return bot.New(t.cfg.BotToken, opts...)
 }

@@ -3,6 +3,7 @@ module nukumizu-backend
 go 1.25.0
 
 require (
+	github.com/go-telegram/bot v1.25.0
 	github.com/gorilla/websocket v1.5.3
 	gopkg.in/mail.v2 v2.3.1
 	modernc.org/sqlite v1.55.0
