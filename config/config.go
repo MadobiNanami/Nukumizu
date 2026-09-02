@@ -6,9 +6,9 @@ import (
 	"os"
 )
 
-// LoadConfig reads and parses the configuration file, applies defaults,
+// LoadGlobalConfig reads and parses the configuration file, applies defaults,
 // and stores it as a global singleton.
-func LoadConfig(configPath string) (*Config, error) {
+func LoadGlobalConfig(configPath string) (*Config, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
@@ -37,22 +37,10 @@ func LoadConfig(configPath string) (*Config, error) {
 	if cfg.ControllerMethod.QQ.NapcatPort == "" {
 		cfg.ControllerMethod.QQ.NapcatPort = "3000"
 	}
-	if cfg.ControllerMethod.QQ.Admins == nil {
-		cfg.ControllerMethod.QQ.Admins = []string{}
-	}
-	if cfg.ControllerMethod.QQ.TrustedGroups == nil {
-		cfg.ControllerMethod.QQ.TrustedGroups = []string{}
-	}
 
 	// Apply defaults for Telegram controller.
 	if cfg.ControllerMethod.Telegram.ListenMethod == "" {
 		cfg.ControllerMethod.Telegram.ListenMethod = "global"
-	}
-	if cfg.ControllerMethod.Telegram.Admins == nil {
-		cfg.ControllerMethod.Telegram.Admins = []string{}
-	}
-	if cfg.ControllerMethod.Telegram.TrustedGroups == nil {
-		cfg.ControllerMethod.Telegram.TrustedGroups = []string{}
 	}
 
 	// Apply defaults for Email controller.
@@ -107,19 +95,35 @@ func LoadConfig(configPath string) (*Config, error) {
 		cfg.ControllerMessage.ServerExecuteResult = "Command execute result:\nServer Name: {{ serverName }}\nCommand: {{ command }}\n***Result***\n\n{{ result }}\n\n************\nTime: {{ time }}"
 	}
 
-	globalConfig = &cfg
+	C_globalConfig = &cfg
 	return &cfg, nil
 }
 
-// GetConfig returns the global configuration singleton.
-func GetConfig() *Config {
-	return globalConfig
+// GetGlobalConfig returns the global configuration singleton.
+func GetGlobalConfig() *Config {
+	return C_globalConfig
+}
+
+// LoadBotUserConfig reads and parses bot_user_config.json and stores it as the
+// global C_botUserConfig singleton, mirroring LoadGlobalConfig.
+func LoadBotUserConfig(configPath string) (*BotUserConfig, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read bot user config file: %w", err)
+	}
+
+	var cfg BotUserConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse bot user config file: %w", err)
+	}
+	C_botUserConfig = &cfg
+	return &cfg, nil
 }
 
 // IsDebugMode returns whether debug mode is enabled.
 func IsDebugMode() bool {
-	if globalConfig == nil {
+	if C_globalConfig == nil {
 		return false
 	}
-	return globalConfig.System.DebugMode
+	return C_globalConfig.System.DebugMode
 }

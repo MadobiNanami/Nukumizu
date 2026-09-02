@@ -35,16 +35,22 @@ func main() {
 	global.SoftwareInfo.BuildTime = BuildTime
 
 	// Parse CLI flags.
-	configPath := flag.String("config", "config.json", "Path to configuration file")
+	configPath_global := flag.String("config", "config.json", "Path to configuration file")
+	configPath_bot_user := flag.String("bot-user-config", "bot_user_config.json", "Path to bot user configuration file")
 	flag.Parse()
 
 	// Log startup banner.
 	postLog.Info(fmt.Sprintf("%s Ver.%s.%d.%s.%s Developed by %s at %s", global.SoftwareInfo.Name, global.SoftwareInfo.Version, global.SoftwareInfo.BuildVer, global.SoftwareInfo.BuildType, global.SoftwareInfo.CommitHash, global.SoftwareInfo.Developer, global.SoftwareInfo.BuildTime))
 
 	// Load configuration.
-	cfg, err := config.LoadConfig(*configPath)
+	cfg, err := config.LoadGlobalConfig(*configPath_global)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf("Failed to load global config: %v", err)
+	}
+
+	_, err = config.LoadBotUserConfig(*configPath_bot_user)
+	if err != nil {
+		log.Fatalf("Failed to load bot user config: %v", err)
 	}
 
 	// Initialize logging.
@@ -162,7 +168,7 @@ func main() {
 
 // initControllers initializes and starts all configured controllers.
 func initControllers() {
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	mgr := controller.GetManager()
 	if mgr == nil {
 		return

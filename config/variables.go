@@ -1,5 +1,7 @@
 package config
 
+import "sort"
+
 // SystemConfig holds system-level configuration.
 type SystemConfig struct {
 	DebugMode    bool   `json:"debugMode"`
@@ -32,25 +34,21 @@ type KomariConfig struct {
 
 // QQConfig holds QQ (Napcat) Bot controller configuration.
 type QQConfig struct {
-	Enabled         bool     `json:"enabled"`
-	NetworkUseProxy bool     `json:"networkUseProxy"`
-	NapcatAddr      string   `json:"napcatAddr"`
-	NapcatPort      string   `json:"napcatPort"`
-	NapcatToken     string   `json:"napcatToken"`
-	BotQQID         int64    `json:"botQQID"`
-	ListenMethod    string   `json:"listenMethod"`
-	Admins          []string `json:"admins"`
-	TrustedGroups   []string `json:"trustedGroups"`
+	Enabled         bool   `json:"enabled"`
+	NetworkUseProxy bool   `json:"networkUseProxy"`
+	NapcatAddr      string `json:"napcatAddr"`
+	NapcatPort      string `json:"napcatPort"`
+	NapcatToken     string `json:"napcatToken"`
+	BotQQID         int64  `json:"botQQID"`
+	ListenMethod    string `json:"listenMethod"`
 }
 
 // TelegramConfig holds Telegram Bot controller configuration.
 type TelegramConfig struct {
-	Enabled         bool     `json:"enabled"`
-	NetworkUseProxy bool     `json:"networkUseProxy"`
-	BotToken        string   `json:"botToken"`
-	ListenMethod    string   `json:"listenMethod"`
-	Admins          []string `json:"admins"`
-	TrustedGroups   []string `json:"trustedGroups"`
+	Enabled         bool   `json:"enabled"`
+	NetworkUseProxy bool   `json:"networkUseProxy"`
+	BotToken        string `json:"botToken"`
+	ListenMethod    string `json:"listenMethod"`
 }
 
 // EmailConfig holds Email notification controller configuration.
@@ -98,7 +96,7 @@ type ControllerMethodConfig struct {
 // ControllerMessageConfig holds message templates for controller responses.
 type ControllerMessageConfig struct {
 	BotStarted          string `json:"BOT_STARTED"`
-	BotHelp  		 	string `json:"BOT_HELP"`
+	BotHelp             string `json:"BOT_HELP"`
 	Tg_BotStart         string `json:"TG_BOT_START"`
 	ServerStatusChanged string `json:"SERVER_STATUS_CHANGED"`
 	ServerList          string `json:"SERVER_LIST"`
@@ -108,7 +106,7 @@ type ControllerMessageConfig struct {
 // Config is the top-level application configuration.
 type Config struct {
 	System            SystemConfig            `json:"system"`
-	Debug  		      DebugConfig             `json:"debug"`
+	Debug             DebugConfig             `json:"debug"`
 	Komari            KomariConfig            `json:"komari"`
 	ControllerMethod  ControllerMethodConfig  `json:"controllerMethod"`
 	ControllerMessage ControllerMessageConfig `json:"controllerMessage"`
@@ -116,4 +114,49 @@ type Config struct {
 	DBPath            string                  `json:"dbPath"`
 }
 
-var globalConfig *Config
+var C_globalConfig *Config
+
+// BotUserOptions holds per-member options stored in bot_user_config.json.
+type BotUserOptions struct {
+	// EventStatusNotify indicates whether this member is subscribed to node
+	// status change notifications.
+	EventStatusNotify bool `json:"event_status_notify"`
+}
+
+// BotUserMembers maps a member ID (QQ number, Telegram @username or numeric
+// user ID, or chat/group ID) to its per-member options.
+type BotUserMembers map[string]BotUserOptions
+
+// IDs returns the member IDs as a sorted slice. JSON object keys have no
+// stable iteration order once decoded into a map, so the result is sorted to
+// keep notifications and authorization checks deterministic.
+func (m BotUserMembers) IDs() []string {
+	ids := make([]string, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// BotUser_QQConfig holds the admins and trusted groups for the QQ (Napcat) bot.
+type BotUser_QQConfig struct {
+	Admins        BotUserMembers `json:"admins"`
+	TrustedGroups BotUserMembers `json:"trustedGroups"`
+}
+
+// BotUser_TelegramConfig holds the admins and trusted groups for the Telegram bot.
+type BotUser_TelegramConfig struct {
+	Admins        BotUserMembers `json:"admins"`
+	TrustedGroups BotUserMembers `json:"trustedGroups"`
+}
+
+// BotUserConfig is the schema of bot_user_config.json, which lists the admins
+// and trusted groups (chat targets) for each bot channel separately from the
+// main config.json.
+type BotUserConfig struct {
+	QQ       BotUser_QQConfig       `json:"qq(napcat)"`
+	Telegram BotUser_TelegramConfig `json:"telegram"`
+}
+
+var C_botUserConfig *BotUserConfig

@@ -15,18 +15,18 @@ import (
 // oneBotEvent mirrors a OneBot 11 event pushed over the NapCat WebSocket.
 // Only "message" events are handled; notice/request/meta_event are ignored.
 type oneBotEvent struct {
-	PostType    string          `json:"post_type"`          // Identifies "message", "notice", "request", or "meta_event"
-	MessageType string          `json:"message_type"`       // Identifies "private" or "group"
-	GroupID     int64           `json:"group_id"`           // Only present for group messages
-	UserID      int64           `json:"user_id"`            // The sender's QQ ID
-	RawMessage  string          `json:"raw_message"`        // The raw message text
-	Message     json.RawMessage `json:"message"`            // The message content, which may include CQ codes
-	Sender      struct {                                    // The sender's information
-		UserID   int64  `json:"user_id"`                    // The sender's QQ ID
-		Nickname string `json:"nickname"`                   // The sender's nickname
+	PostType    string          `json:"post_type"`    // Identifies "message", "notice", "request", or "meta_event"
+	MessageType string          `json:"message_type"` // Identifies "private" or "group"
+	GroupID     int64           `json:"group_id"`     // Only present for group messages
+	UserID      int64           `json:"user_id"`      // The sender's QQ ID
+	RawMessage  string          `json:"raw_message"`  // The raw message text
+	Message     json.RawMessage `json:"message"`      // The message content, which may include CQ codes
+	Sender      struct {        // The sender's information
+		UserID   int64  `json:"user_id"`  // The sender's QQ ID
+		Nickname string `json:"nickname"` // The sender's nickname
 	} `json:"sender"`
-	SelfID  int64  `json:"self_id"`                         // The bot's QQ ID
-	SubType string `json:"sub_type"`                        // The subtype of the message, e.g., "normal", "anonymous", etc.
+	SelfID  int64  `json:"self_id"`  // The bot's QQ ID
+	SubType string `json:"sub_type"` // The subtype of the message, e.g., "normal", "anonymous", etc.
 }
 
 // QQController handles QQ Bot interactions by connecting directly to NapCat.
@@ -94,24 +94,24 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 		return
 	}
 
-	if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatMsg {
+	if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatMsg {
 		postLog.Debug("Napcat WS event received: " + string(raw))
 	}
 
 	// Only handle message events; ignore notice/request/meta_event.
 	if ev.PostType != "message" {
-		if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatAction {
+		if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatAction {
 			postLog.Debug("Ignoring Napcat WS event: " + string(raw))
 		}
 		return
 	}
 
 	// Ignore messages the bot itself sent (echo prevention).
-	if q.isSelfMessage(ev) && !config.GetConfig().System.DebugMode {
+	if q.isSelfMessage(ev) && !config.GetGlobalConfig().System.DebugMode {
 		return
 	}
-	if q.isSelfMessage(ev) && config.GetConfig().System.DebugMode && config.GetConfig().Debug.NapcatIgnoreSelfMsg {
-		if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatAction {
+	if q.isSelfMessage(ev) && config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.NapcatIgnoreSelfMsg {
+		if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatAction {
 			postLog.Debug("Ignoring Napcat WS self message: " + string(raw))
 		}
 		return
@@ -132,7 +132,7 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 
 	response := q.processCommand(cmd)
 	if response == "" {
-		if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatAction {
+		if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatAction {
 			postLog.Debug("Napcat WS command discarded: " + string(raw))
 		}
 		return
@@ -162,7 +162,7 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 	if q.cfg.ListenMethod == "at" {
 		atMention := fmt.Sprintf("[CQ:at,qq=%d]", q.cfg.BotQQID)
 		if !strings.Contains(text, atMention) {
-			if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowNapcatAction {
+			if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatAction {
 				postLog.Debug("Napcat WS message ignored (no @mention): " + text)
 			}
 			return "" // Not mentioned, ignore.
@@ -183,8 +183,8 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
-	response, err := controller.GetManager().Trigger(parsed, q.cfg.TrustedGroups, q.cfg.Admins, q.cfg.ListenMethod)
-	if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowTriggerCmdEcho {
+	response, err := controller.GetManager().Trigger(parsed, q.trustedGroupIDs(), q.adminIDs(), q.cfg.ListenMethod)
+	if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowTriggerCmdEcho {
 		postLog.Debug(fmt.Sprintf("[qq_napcat] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
 	}
 	if err != nil {
@@ -205,6 +205,22 @@ func (q *QQController) isSelfMessage(ev oneBotEvent) bool {
 	return false
 }
 
+// adminIDs returns the QQ admin IDs from bot_user_config.json.
+func (q *QQController) adminIDs() []string {
+	if c := config.C_botUserConfig; c != nil {
+		return c.QQ.Admins.IDs()
+	}
+	return nil
+}
+
+// trustedGroupIDs returns the QQ trusted group IDs from bot_user_config.json.
+func (q *QQController) trustedGroupIDs() []string {
+	if c := config.C_botUserConfig; c != nil {
+		return c.QQ.TrustedGroups.IDs()
+	}
+	return nil
+}
+
 // SendMessage sends an arbitrary message (e.g. the bot initialization message)
 // to all QQ trusted groups and admins.
 func (q *QQController) SendMessage(message string) error {
@@ -212,10 +228,10 @@ func (q *QQController) SendMessage(message string) error {
 		return nil
 	}
 
-	for _, groupID := range q.cfg.TrustedGroups {
+	for _, groupID := range q.trustedGroupIDs() {
 		q.sendGroupMessage(groupID, message)
 	}
-	for _, adminID := range q.cfg.Admins {
+	for _, adminID := range q.adminIDs() {
 		q.sendPrivateMessage(adminID, message)
 	}
 	return nil
@@ -227,17 +243,17 @@ func (q *QQController) SendStatusChange(change node.StatusChange) error {
 		return nil
 	}
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildParamsFromStatusChange(change)
 	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
 
 	// Send to trusted groups.
-	for _, groupID := range q.cfg.TrustedGroups {
+	for _, groupID := range q.trustedGroupIDs() {
 		q.sendGroupMessage(groupID, message)
 	}
 
 	// Send to admins via private message.
-	for _, adminID := range q.cfg.Admins {
+	for _, adminID := range q.adminIDs() {
 		q.sendPrivateMessage(adminID, message)
 	}
 
@@ -250,11 +266,11 @@ func (q *QQController) SendServerList(onlineServers, offlineServers string) erro
 		return nil
 	}
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildParamsFromServerList()
 	message := template.Render(cfg.ControllerMessage.ServerList, params)
 
-	for _, groupID := range q.cfg.TrustedGroups {
+	for _, groupID := range q.trustedGroupIDs() {
 		q.sendGroupMessage(groupID, message)
 	}
 	return nil
@@ -266,11 +282,11 @@ func (q *QQController) SendExecuteResult(serverName, serverUUID, command, result
 		return nil
 	}
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
 	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
 
-	for _, groupID := range q.cfg.TrustedGroups {
+	for _, groupID := range q.trustedGroupIDs() {
 		q.sendGroupMessage(groupID, message)
 	}
 	return nil

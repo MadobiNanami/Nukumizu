@@ -142,7 +142,7 @@ func (t *TelegramController) handleUpdate(_ context.Context, _ *bot.Bot, update 
 	}
 	msg := update.Message
 
-	if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowTelegramMsg {
+	if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowTelegramMsg {
 		raw, _ := json.Marshal(update)
 		postLog.Debug("Telegram update received: " + string(raw))
 	}
@@ -218,8 +218,8 @@ func (t *TelegramController) processCommand(cmd controller.Command) string {
 
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
-	response, err := controller.GetManager().Trigger(parsed, t.cfg.TrustedGroups, t.resolvedAdminList(), t.cfg.ListenMethod)
-	if config.GetConfig().System.DebugMode && config.GetConfig().Debug.ShowTriggerCmdEcho {
+	response, err := controller.GetManager().Trigger(parsed, t.trustedGroupIDs(), t.resolvedAdminList(), t.cfg.ListenMethod)
+	if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowTriggerCmdEcho {
 		postLog.Debug(fmt.Sprintf("[telegram] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
 	}
 	if err != nil {
@@ -245,7 +245,7 @@ func (t *TelegramController) SendStatusChange(change node.StatusChange) error {
 		return nil
 	}
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildParamsFromStatusChange(change)
 	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
 
@@ -259,7 +259,7 @@ func (t *TelegramController) SendServerList(onlineServers, offlineServers string
 		return nil
 	}
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildParamsFromServerList()
 	message := template.Render(cfg.ControllerMessage.ServerList, params)
 
@@ -273,7 +273,7 @@ func (t *TelegramController) SendExecuteResult(serverName, serverUUID, command, 
 		return nil
 	}
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
 	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
 
@@ -334,13 +334,31 @@ func (t *TelegramController) resolveUsername(username string) (int64, bool) {
 	return id, ok
 }
 
+// adminIDs returns the Telegram admin entries (numeric user ID or @username)
+// from bot_user_config.json.
+func (t *TelegramController) adminIDs() []string {
+	if c := config.C_botUserConfig; c != nil {
+		return c.Telegram.Admins.IDs()
+	}
+	return nil
+}
+
+// trustedGroupIDs returns the Telegram trusted group IDs from bot_user_config.json.
+func (t *TelegramController) trustedGroupIDs() []string {
+	if c := config.C_botUserConfig; c != nil {
+		return c.Telegram.TrustedGroups.IDs()
+	}
+	return nil
+}
+
 // resolvedAdminList maps username-based admin entries to numeric IDs so the
 // unified processor's numeric IsAdmin check works. Unresolvable entries (the
 // user has not messaged the bot yet) pass through unchanged and simply never
 // match.
 func (t *TelegramController) resolvedAdminList() []string {
-	result := make([]string, 0, len(t.cfg.Admins))
-	for _, admin := range t.cfg.Admins {
+	admins := t.adminIDs()
+	result := make([]string, 0, len(admins))
+	for _, admin := range admins {
 		if id, ok := t.resolveUsername(admin); ok {
 			result = append(result, strconv.FormatInt(id, 10))
 		} else {
@@ -353,14 +371,14 @@ func (t *TelegramController) resolvedAdminList() []string {
 // sendToGroupsAndAdmins sends a message to all trusted groups and admins.
 func (t *TelegramController) sendToGroupsAndAdmins(message string) {
 	t.sendToGroups(message)
-	for _, admin := range t.cfg.Admins {
+	for _, admin := range t.adminIDs() {
 		t.sendAdminMessage(admin, message)
 	}
 }
 
 // sendToGroups sends a message to all trusted groups.
 func (t *TelegramController) sendToGroups(message string) {
-	for _, groupID := range t.cfg.TrustedGroups {
+	for _, groupID := range t.trustedGroupIDs() {
 		t.sendGroupMessage(groupID, message)
 	}
 }

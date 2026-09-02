@@ -77,7 +77,7 @@ func (m *Manager) ShowBotInitMessage() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildBotInitializationMsgParams()
 	message := template.Render(cfg.ControllerMessage.BotStarted, params)
 
@@ -102,7 +102,7 @@ func (m *Manager) ShowBotServerList() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildParamsFromServerList()
 	message := template.Render(cfg.ControllerMessage.ServerList, params)
 
@@ -125,7 +125,7 @@ func (m *Manager) NotifyStatusChange(change node.StatusChange) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	templateStr := cfg.ControllerMessage.ServerStatusChanged
 	params := template.BuildParamsFromStatusChange(change)
 

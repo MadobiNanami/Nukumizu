@@ -11,13 +11,13 @@ import (
 )
 
 func handleHelp(cmd Command) (string, error) {
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildBotInitializationMsgParams()
 	return template.Render(cfg.ControllerMessage.BotHelp, params, cmd.Source), nil
 }
 
 func handleList(cmd Command) (string, error) {
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildParamsFromServerList()
 	return template.Render(cfg.ControllerMessage.ServerList, params, cmd.Source), nil
 }
@@ -128,7 +128,7 @@ func handleRun(cmd Command) (string, error) {
 		return fmt.Sprintf("Error getting results: %v", err), nil
 	}
 
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildParamsFromExecResult(uuidArg, uuidArg, command, formatTaskResults(results))
 	return template.Render(cfg.ControllerMessage.ServerExecuteResult, params, cmd.Source), nil
 }
@@ -178,7 +178,7 @@ func handleInfo(cmd Command) (string, error) {
 }
 
 func telegram_handleStart() (string, error) {
-	cfg := config.GetConfig()
+	cfg := config.GetGlobalConfig()
 	params := template.BuildBotInitializationMsgParams()
 	return template.Render(cfg.ControllerMessage.Tg_BotStart, params, "telegram"), nil
 }

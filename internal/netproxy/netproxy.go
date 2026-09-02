@@ -20,7 +20,7 @@ import (
 // proxyURL returns the system-wide network proxy URL, or nil when none is
 // configured. A missing scheme is normalized to http:// for convenience.
 func proxyURL() *url.URL {
-	raw := config.GetConfig().System.NetworkProxy
+	raw := config.GetGlobalConfig().System.NetworkProxy
 	if raw == "" {
 		return nil
 	}
