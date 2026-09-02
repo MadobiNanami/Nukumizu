@@ -249,7 +249,21 @@ func (t *TelegramController) SendStatusChange(change node.StatusChange) error {
 	params := template.BuildParamsFromStatusChange(change)
 	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
 
-	t.sendToGroupsAndAdmins(message)
+	// Only notify trusted groups and admins whose event_status_notify is true.
+	if uc := config.C_botUserConfig; uc != nil {
+		for groupID, opts := range uc.Telegram.TrustedGroups {
+			if !opts.EventStatusNotify {
+				continue
+			}
+			t.sendGroupMessage(groupID, message)
+		}
+		for admin, opts := range uc.Telegram.Admins {
+			if !opts.EventStatusNotify {
+				continue
+			}
+			t.sendAdminMessage(admin, message)
+		}
+	}
 	return nil
 }
 

@@ -247,14 +247,20 @@ func (q *QQController) SendStatusChange(change node.StatusChange) error {
 	params := template.BuildParamsFromStatusChange(change)
 	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
 
-	// Send to trusted groups.
-	for _, groupID := range q.trustedGroupIDs() {
-		q.sendGroupMessage(groupID, message)
-	}
-
-	// Send to admins via private message.
-	for _, adminID := range q.adminIDs() {
-		q.sendPrivateMessage(adminID, message)
+	// Only notify trusted groups and admins whose event_status_notify is true.
+	if uc := config.C_botUserConfig; uc != nil {
+		for groupID, opts := range uc.QQ.TrustedGroups {
+			if !opts.EventStatusNotify {
+				continue
+			}
+			q.sendGroupMessage(groupID, message)
+		}
+		for adminID, opts := range uc.QQ.Admins {
+			if !opts.EventStatusNotify {
+				continue
+			}
+			q.sendPrivateMessage(adminID, message)
+		}
 	}
 
 	return nil
