@@ -99,11 +99,6 @@ func LoadGlobalConfig(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
-// GetGlobalConfig returns the global configuration singleton.
-func GetGlobalConfig() *Config {
-	return C_globalConfig
-}
-
 // LoadBotUserConfig reads and parses bot_user_config.json and stores it as the
 // global C_botUserConfig singleton, mirroring LoadGlobalConfig.
 func LoadBotUserConfig(configPath string) (*BotUserConfig, error) {

@@ -409,7 +409,7 @@ func GetWSClient() *WSClient {
 
 // LoginAndStart performs the Komari login and returns an error if it fails.
 func LoginAndStart() error {
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	client := GetClient()
 	if client == nil {
 		return fmt.Errorf("komari client not initialized")

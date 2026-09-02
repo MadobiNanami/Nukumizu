@@ -168,7 +168,7 @@ func main() {
 
 // initControllers initializes and starts all configured controllers.
 func initControllers() {
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	mgr := controller.GetManager()
 	if mgr == nil {
 		return

@@ -58,7 +58,7 @@ func (n *NtfyController) SendStatusChange(change node.StatusChange) error {
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromStatusChange(change)
 	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
 
@@ -72,7 +72,7 @@ func (n *NtfyController) SendServerList(onlineServers, offlineServers string) er
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
 	message := template.Render(cfg.ControllerMessage.ServerList, params)
 
@@ -85,7 +85,7 @@ func (n *NtfyController) SendExecuteResult(serverName, serverUUID, command, resu
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
 	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
 

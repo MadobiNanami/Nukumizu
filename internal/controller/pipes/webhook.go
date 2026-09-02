@@ -59,7 +59,7 @@ func (w *WebhookController) SendStatusChange(change node.StatusChange) error {
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromStatusChange(change)
 	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
 
@@ -80,7 +80,7 @@ func (w *WebhookController) SendServerList(onlineServers, offlineServers string)
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
 	message := template.Render(cfg.ControllerMessage.ServerList, params)
 
@@ -101,7 +101,7 @@ func (w *WebhookController) SendExecuteResult(serverName, serverUUID, command, r
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
 	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
 

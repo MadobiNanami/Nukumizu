@@ -142,7 +142,7 @@ func (t *TelegramController) handleUpdate(_ context.Context, _ *bot.Bot, update 
 	}
 	msg := update.Message
 
-	if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowTelegramMsg {
+	if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowTelegramMsg {
 		raw, _ := json.Marshal(update)
 		postLog.Debug("Telegram update received: " + string(raw))
 	}
@@ -219,7 +219,7 @@ func (t *TelegramController) processCommand(cmd controller.Command) string {
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
 	response, err := controller.GetManager().Trigger(parsed, t.trustedGroupIDs(), t.resolvedAdminList(), t.cfg.ListenMethod)
-	if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowTriggerCmdEcho {
+	if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowTriggerCmdEcho {
 		postLog.Debug(fmt.Sprintf("[telegram] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
 	}
 	if err != nil {
@@ -245,7 +245,7 @@ func (t *TelegramController) SendStatusChange(change node.StatusChange) error {
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromStatusChange(change)
 	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
 
@@ -259,7 +259,7 @@ func (t *TelegramController) SendServerList(onlineServers, offlineServers string
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
 	message := template.Render(cfg.ControllerMessage.ServerList, params)
 
@@ -273,7 +273,7 @@ func (t *TelegramController) SendExecuteResult(serverName, serverUUID, command, 
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
 	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
 

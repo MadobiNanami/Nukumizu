@@ -94,24 +94,24 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 		return
 	}
 
-	if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatMsg {
+	if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowNapcatMsg {
 		postLog.Debug("Napcat WS event received: " + string(raw))
 	}
 
 	// Only handle message events; ignore notice/request/meta_event.
 	if ev.PostType != "message" {
-		if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatAction {
+		if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowNapcatAction {
 			postLog.Debug("Ignoring Napcat WS event: " + string(raw))
 		}
 		return
 	}
 
 	// Ignore messages the bot itself sent (echo prevention).
-	if q.isSelfMessage(ev) && !config.GetGlobalConfig().System.DebugMode {
+	if q.isSelfMessage(ev) && !config.C_globalConfig.System.DebugMode {
 		return
 	}
-	if q.isSelfMessage(ev) && config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.NapcatIgnoreSelfMsg {
-		if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatAction {
+	if q.isSelfMessage(ev) && config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.NapcatIgnoreSelfMsg {
+		if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowNapcatAction {
 			postLog.Debug("Ignoring Napcat WS self message: " + string(raw))
 		}
 		return
@@ -132,7 +132,7 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 
 	response := q.processCommand(cmd)
 	if response == "" {
-		if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatAction {
+		if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowNapcatAction {
 			postLog.Debug("Napcat WS command discarded: " + string(raw))
 		}
 		return
@@ -162,7 +162,7 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 	if q.cfg.ListenMethod == "at" {
 		atMention := fmt.Sprintf("[CQ:at,qq=%d]", q.cfg.BotQQID)
 		if !strings.Contains(text, atMention) {
-			if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowNapcatAction {
+			if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowNapcatAction {
 				postLog.Debug("Napcat WS message ignored (no @mention): " + text)
 			}
 			return "" // Not mentioned, ignore.
@@ -184,7 +184,7 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
 	response, err := controller.GetManager().Trigger(parsed, q.trustedGroupIDs(), q.adminIDs(), q.cfg.ListenMethod)
-	if config.GetGlobalConfig().System.DebugMode && config.GetGlobalConfig().Debug.ShowTriggerCmdEcho {
+	if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowTriggerCmdEcho {
 		postLog.Debug(fmt.Sprintf("[qq_napcat] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
 	}
 	if err != nil {
@@ -243,7 +243,7 @@ func (q *QQController) SendStatusChange(change node.StatusChange) error {
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromStatusChange(change)
 	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
 
@@ -266,7 +266,7 @@ func (q *QQController) SendServerList(onlineServers, offlineServers string) erro
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
 	message := template.Render(cfg.ControllerMessage.ServerList, params)
 
@@ -282,7 +282,7 @@ func (q *QQController) SendExecuteResult(serverName, serverUUID, command, result
 		return nil
 	}
 
-	cfg := config.GetGlobalConfig()
+	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
 	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
 
