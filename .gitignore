@@ -3,6 +3,7 @@ agent.md
 config.json
 bot_user_config.json
 *.exe
+nukumizu-linux-amd64
 
 # SQLite database files. They live on a network share (Y:), and git/cloud
 # sync touching them while a WAL database is open corrupts the WAL index and
