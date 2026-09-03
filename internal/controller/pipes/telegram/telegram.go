@@ -180,7 +180,14 @@ func (t *TelegramController) handleUpdate(_ context.Context, _ *bot.Bot, update 
 		return
 	}
 
-	if err := t.sendMessage(msg.Chat.ID, response); err != nil {
+	message := controller.Message{
+		Source:  "telegram",
+		Content: response,
+		ChatID:  msg.Chat.ID,
+		Type:    controller.MessageTypeReply,
+	}
+
+	if err := t.sendMessage(message); err != nil {
 		postLog.Warning("Failed to send Telegram reply: " + err.Error())
 	}
 }
@@ -229,13 +236,30 @@ func (t *TelegramController) processCommand(cmd controller.Command) string {
 	return response
 }
 
-// SendMessage sends an arbitrary message (e.g. the bot initialization message)
-// to all Telegram trusted groups and admins.
-func (t *TelegramController) SendMessage(message string) error {
+// SendMessage sends an automatic message (e.g. the bot initialization message
+// and the startup server list) to all Telegram trusted groups and admins. Each
+// member's opt-out options in bot_user_config.json (e.g. EventBotStarted for
+// event_bot_started messages) are honored per recipient.
+func (t *TelegramController) SendMessage(message controller.Message) error {
 	if !t.cfg.Enabled || t.client == nil {
 		return nil
 	}
-	t.sendToGroupsAndAdmins(message)
+
+	// Only notify trusted groups and admins whose options allow this message type.
+	if uc := config.C_botUserConfig; uc != nil {
+		for groupID, opts := range uc.Telegram.TrustedGroups {
+			if !controller.MemberReceives(opts, message.Type) {
+				continue
+			}
+			t.sendGroupMessage(groupID, message.Content)
+		}
+		for admin, opts := range uc.Telegram.Admins {
+			if !controller.MemberReceives(opts, message.Type) {
+				continue
+			}
+			t.sendAdminMessage(admin, message.Content)
+		}
+	}
 	return nil
 }
 
@@ -382,14 +406,6 @@ func (t *TelegramController) resolvedAdminList() []string {
 	return result
 }
 
-// sendToGroupsAndAdmins sends a message to all trusted groups and admins.
-func (t *TelegramController) sendToGroupsAndAdmins(message string) {
-	t.sendToGroups(message)
-	for _, admin := range t.adminIDs() {
-		t.sendAdminMessage(admin, message)
-	}
-}
-
 // sendToGroups sends a message to all trusted groups.
 func (t *TelegramController) sendToGroups(message string) {
 	for _, groupID := range t.trustedGroupIDs() {
@@ -426,7 +442,13 @@ func (t *TelegramController) sendAdminMessage(admin string, message string) {
 
 // sendToChat sends a message to a chat ID, logging failures.
 func (t *TelegramController) sendToChat(chatID int64, message string) {
-	if err := t.sendMessage(chatID, message); err != nil {
+	messaged := controller.Message{
+		Source:  "telegram",
+		Content: message,
+		ChatID:  chatID,
+		Type:    controller.MessageTypeReply,
+	}
+	if err := t.sendMessage(messaged); err != nil {
 		postLog.Warning(fmt.Sprintf("Failed to send Telegram message to %d: %v", chatID, err))
 	}
 }

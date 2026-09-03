@@ -121,6 +121,16 @@ type BotUserOptions struct {
 	// EventStatusNotify indicates whether this member is subscribed to node
 	// status change notifications.
 	EventStatusNotify bool `json:"event_status_notify"`
+
+	// EventBotStarted indicates whether this member receives the automatic
+	// messages the bot pushes on startup (welcome message and startup server
+	// list).
+	EventBotStarted bool `json:"event_bot_started"`
+
+	// EventReply indicates whether this member receives automatic replies to
+	// their commands (e.g. /status, /list). If false, the bot will not send any
+	// reply to this member's commands.
+	EventReply bool `json:"event_reply"`
 }
 
 // BotUserMembers maps a member ID (QQ number, Telegram @username or numeric

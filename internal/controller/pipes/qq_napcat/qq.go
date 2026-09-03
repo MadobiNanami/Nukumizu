@@ -221,18 +221,29 @@ func (q *QQController) trustedGroupIDs() []string {
 	return nil
 }
 
-// SendMessage sends an arbitrary message (e.g. the bot initialization message)
-// to all QQ trusted groups and admins.
-func (q *QQController) SendMessage(message string) error {
+// SendMessage sends an automatic message (e.g. the bot initialization message
+// and the startup server list) to all QQ trusted groups and admins. Each
+// member's opt-out options in bot_user_config.json (e.g. EventBotStarted for
+// event_bot_started messages) are honored per recipient.
+func (q *QQController) SendMessage(message controller.Message) error {
 	if !q.cfg.Enabled {
 		return nil
 	}
 
-	for _, groupID := range q.trustedGroupIDs() {
-		q.sendGroupMessage(groupID, message)
-	}
-	for _, adminID := range q.adminIDs() {
-		q.sendPrivateMessage(adminID, message)
+	// Only notify trusted groups and admins whose options allow this message type.
+	if uc := config.C_botUserConfig; uc != nil {
+		for groupID, opts := range uc.QQ.TrustedGroups {
+			if !controller.MemberReceives(opts, message.Type) {
+				continue
+			}
+			q.sendGroupMessage(groupID, message.Content)
+		}
+		for adminID, opts := range uc.QQ.Admins {
+			if !controller.MemberReceives(opts, message.Type) {
+				continue
+			}
+			q.sendPrivateMessage(adminID, message.Content)
+		}
 	}
 	return nil
 }

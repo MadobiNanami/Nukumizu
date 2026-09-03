@@ -21,6 +21,37 @@ type Command struct {
 	SenderID int64    // User ID of the sender
 }
 
+// Message represents a message to be sent by a controller.
+type Message struct {
+	Source  string // The source pipe (e.g., "telegram", "qq", "napcat")
+	Content string // The message content
+	ChatID  int64  // Chat/group ID where the message should be sent
+	Type    string // Message type (see MessageType*), used for per-member opt-outs
+}
+
+// Message type labels. They let bot pipes apply per-member opt-out options from
+// bot_user_config.json (see MemberReceives) to automatic messages.
+const (
+	// MessageTypeBotStarted marks the automatic welcome/server-list messages the
+	// bot pushes on startup. Gated by BotUserOptions.EventBotStarted.
+	MessageTypeBotStarted = "event_bot_started"
+	// MessageTypeReply marks a direct reply to a user command. Reserved for the
+	// BotUserOptions.EventReply opt-out.
+	MessageTypeReply = "event_reply"
+)
+
+// MemberReceives reports whether a member whose bot_user_config.json options are
+// opts receives an automatic message of the given type. Only member-controllable
+// types are gated; anything else is always delivered.
+func MemberReceives(opts config.BotUserOptions, messageType string) bool {
+	switch messageType {
+	case MessageTypeBotStarted:
+		return opts.EventBotStarted
+	default:
+		return true
+	}
+}
+
 // Controller defines the interface for all notification/bot controllers.
 type Controller interface {
 	Name() string
@@ -38,7 +69,7 @@ type Controller interface {
 // pipes (email, ntfy, webhook) do not.
 type BotController interface {
 	Controller
-	SendMessage(message string) error
+	SendMessage(message Message) error
 }
 
 // Manager manages all controller instances and routes events.
@@ -72,14 +103,16 @@ func (m *Manager) Register(c Controller) {
 
 // ShowBotInitMessage sends the bot initialization message to all enabled
 // bot controllers (QQ/NapCat and Telegram). Notification-only pipes that do
-// not implement BotController are skipped.
+// not implement BotController are skipped. The message is typed
+// MessageTypeBotStarted so each controller can honor its members' per-recipient
+// EventBotStarted opt-out.
 func (m *Manager) ShowBotInitMessage() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	cfg := config.C_globalConfig
 	params := template.BuildBotInitializationMsgParams()
-	message := template.Render(cfg.ControllerMessage.BotStarted, params)
+	content := template.Render(cfg.ControllerMessage.BotStarted, params)
 
 	for _, ctrl := range m.controllers {
 		if !ctrl.IsEnabled() {
@@ -88,6 +121,11 @@ func (m *Manager) ShowBotInitMessage() {
 		bot, ok := ctrl.(BotController)
 		if !ok {
 			continue // Notification-only pipe (email/ntfy/webhook), not a bot.
+		}
+		message := Message{
+			Source:  bot.Name(),
+			Content: content,
+			Type:    MessageTypeBotStarted,
 		}
 		if err := bot.SendMessage(message); err != nil {
 			postLog.Warning(fmt.Sprintf("Controller %s failed to send init message: %v", bot.Name(), err))
@@ -95,16 +133,18 @@ func (m *Manager) ShowBotInitMessage() {
 	}
 }
 
-// ShowBotServerList sends the server list to all enabled bot controllers. The
-// message content is identical to the /list command (same template and
-// parameters).
+// ShowBotServerList sends the startup server list to all enabled bot
+// controllers. The message content is identical to the /list command (same
+// template and parameters). Like the init message it is typed
+// MessageTypeBotStarted so members who opted out of bot-started pushes do not
+// receive it.
 func (m *Manager) ShowBotServerList() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
-	message := template.Render(cfg.ControllerMessage.ServerList, params)
+	content := template.Render(cfg.ControllerMessage.ServerList, params)
 
 	for _, ctrl := range m.controllers {
 		if !ctrl.IsEnabled() {
@@ -113,6 +153,11 @@ func (m *Manager) ShowBotServerList() {
 		bot, ok := ctrl.(BotController)
 		if !ok {
 			continue // Notification-only pipe (email/ntfy/webhook), not a bot.
+		}
+		message := Message{
+			Source:  bot.Name(),
+			Content: content,
+			Type:    MessageTypeBotStarted,
 		}
 		if err := bot.SendMessage(message); err != nil {
 			postLog.Warning(fmt.Sprintf("Controller %s failed to send server list: %v", bot.Name(), err))

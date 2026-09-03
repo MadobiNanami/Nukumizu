@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"nukumizu-backend/internal/controller"
 )
 
 // maxMessageLen is the safe chunk size for outbound messages. Telegram's hard
@@ -18,15 +19,16 @@ const maxMessageLen = 4000
 // rich text. Templates must stay valid under Telegram's legacy Markdown:
 // unpaired '*' or '_' characters (e.g. a lone '*Event: ...' label) make the
 // API reject the whole message.
-func (t *TelegramController) sendMessage(chatID int64, text string) error {
+func (t *TelegramController) sendMessage(message controller.Message) error {
 	if t.client == nil {
 		return nil
 	}
-	if strings.TrimSpace(text) == "" {
+	if strings.TrimSpace(message.Content) == "" {
 		return nil
 	}
-	for _, chunk := range splitMessage(text, maxMessageLen) {
-		if err := t.sendMessageChunk(chatID, chunk); err != nil {
+
+	for _, chunk := range splitMessage(message.Content, maxMessageLen) {
+		if err := t.sendMessageChunk(message.ChatID, chunk); err != nil {
 			return err
 		}
 	}
