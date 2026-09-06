@@ -19,7 +19,7 @@ var SoftwareInfo = SoftwareInfoStr{
 	BuildVer:    2,
 	CommitHash:  "unknown",
 	Description: "Remote server monitoring and command execution subsystem for Komari",
-	BuildType:   "Debug",
+	BuildType:   "pre-release",
 	BuildTime:   "unknown",
 }
 
