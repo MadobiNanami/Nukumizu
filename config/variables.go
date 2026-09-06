@@ -175,14 +175,18 @@ var C_botUserConfig *BotUserConfig
 // file is auto-populated by the node tracker for every node Komari reports;
 // per-node options are edited by hand in the JSON file.
 type BotNodeOptions struct {
-	// EnableStatusNotify is an allow-list switch: a node broadcasts status-change
-	// notifications only when this is true. Nodes default to false (silent)
-	// unless explicitly enabled.
-	EnableStatusNotify bool `json:"enableStatusNotify"`
+	// EnableStatusNotify controls whether this node broadcasts status-change
+	// notifications. It defaults to true: only an explicit false in the JSON
+	// file disables a node's notifications. The pointer (rather than a plain
+	// bool) lets an absent field be told apart from an explicit false, and
+	// omitempty keeps untouched nodes stored as {}.
+	EnableStatusNotify *bool `json:"enableStatusNotify,omitempty"`
 }
 
 // BotNodeMembers maps a node UUID (as reported by Komari) to its per-node
-// options, e.g. bot_node_config.json:
-//
-//	{"<uuid1>": {"enableStatusNotify": true}, "<uuid2>": {}}
+// options.
 type BotNodeMembers map[string]BotNodeOptions
+
+// C_botNodeConfig is the global singleton mirroring bot_node_config.json,
+// populated by LoadBotNodeConfig.
+var C_botNodeConfig BotNodeMembers

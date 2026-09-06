@@ -47,6 +47,13 @@ func main() {
 		log.Fatalf("Failed to load bot user config: %v", err)
 	}
 
+	// Load the node registry config. Unlike the other files it is optional:
+	// missing or empty bot_node_config.json simply means every node keeps its
+	// default enableStatusNotify (true).
+	if err := config.LoadBotNodeConfig(global.ConfigPath.BotNodeConfig); err != nil {
+		log.Fatalf("Failed to load bot node config: %v", err)
+	}
+
 	// Initialize logging.
 	postLog.SetDebugMode(cfg.System.DebugMode)
 	postLog.InitLogBroadcaster()

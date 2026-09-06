@@ -5,25 +5,45 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sync"
 )
 
-// botNodeConfigMu guards botNodeConfig, the in-memory mirror of
-// bot_node_config.json.
-var (
-	botNodeConfigMu sync.RWMutex
-	botNodeConfig   BotNodeMembers
-)
+// LoadBotNodeConfig reads and parses bot_node_config.json and stores it as the
+// global C_botNodeConfig singleton, mirroring LoadGlobalConfig. Unlike the
+// other config files this one is auto-generated and optional: a missing or
+// empty file yields an empty map, so every node falls back to its default
+// enableStatusNotify value (true).
+func LoadBotNodeConfig(configPath string) error {
+	cfg := BotNodeMembers{}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			C_botNodeConfig = cfg
+			return nil
+		}
+		return fmt.Errorf("failed to read bot node config file: %w", err)
+	}
+	if len(bytes.TrimSpace(data)) > 0 {
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return fmt.Errorf("failed to parse bot node config file: %w", err)
+		}
+	}
+	C_botNodeConfig = cfg
+	return nil
+}
 
 // NodeStatusNotifyEnabled reports whether the node identified by uuid should
-// broadcast status-change notifications, per bot_node_config.json. The flag is
-// allow-list only: a node notifies when its entry has enableStatusNotify set to
-// true, and stays silent when the entry is absent or not enabled.
+// broadcast status-change notifications, per bot_node_config.json.
+// enableStatusNotify defaults to true: a node notifies unless its entry
+// explicitly sets the flag to false.
 func NodeStatusNotifyEnabled(uuid string) bool {
-	botNodeConfigMu.RLock()
-	opts, ok := botNodeConfig[uuid]
-	botNodeConfigMu.RUnlock()
-	return ok && opts.EnableStatusNotify
+	if C_botNodeConfig == nil {
+		return true
+	}
+	opts, ok := C_botNodeConfig[uuid]
+	if !ok || opts.EnableStatusNotify == nil {
+		return true
+	}
+	return *opts.EnableStatusNotify
 }
 
 // LoadGlobalConfig reads and parses the configuration file, applies defaults,
@@ -135,16 +155,16 @@ func LoadBotUserConfig(configPath string) (*BotUserConfig, error) {
 	return &cfg, nil
 }
 
-// SaveBotNodeConfig persists the given node UUIDs to the bot node config file
-// and refreshes the in-memory mirror read by NodeStatusNotifyEnabled. Entries
-// already present in the file are always preserved: a UUID Komari no longer
-// reports on a given fetch is kept rather than deleted, so per-node settings
-// for stale nodes survive a node-list refresh that does not include them. UUIDs
-// seen for the first time are added disabled (enableStatusNotify defaults to
-// false); enable a node's status notifications by setting the flag to true in
-// the file. The resulting JSON has its object keys emitted in sorted order by
-// encoding/json, keeping the file deterministic across writes. The path is
-// supplied by the caller (typically global.ConfigPath.BotNodeConfig).
+// SaveBotNodeConfig persists the given node UUIDs to the bot node config file,
+// which is a plain registry of the nodes Komari reports (read back at startup
+// by LoadBotNodeConfig). Entries already present are always preserved: a UUID
+// Komari no longer reports on a given fetch is kept rather than deleted, and
+// any enableStatusNotify a user set by hand is left untouched. UUIDs seen for
+// the first time are added as an empty object, i.e. no parameter is written, so
+// they inherit the enableStatusNotify default (true). The resulting JSON has
+// its object keys emitted in sorted order by encoding/json, keeping the file
+// deterministic across writes. The path is supplied by the caller (typically
+// global.ConfigPath.BotNodeConfig).
 func SaveBotNodeConfig(configPath string, uuids []string) error {
 	// Start from whatever is already on disk so nothing is dropped. An empty or
 	// missing file is treated as an empty map.
@@ -172,10 +192,6 @@ func SaveBotNodeConfig(configPath string, uuids []string) error {
 	if err := os.WriteFile(configPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write bot node config %s: %w", configPath, err)
 	}
-
-	botNodeConfigMu.Lock()
-	botNodeConfig = members
-	botNodeConfigMu.Unlock()
 	return nil
 }
 
