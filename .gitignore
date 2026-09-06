@@ -2,6 +2,7 @@
 agent.md
 config.json
 bot_user_config.json
+bot_node_config.json
 *.exe
 nukumizu-linux-amd64
 

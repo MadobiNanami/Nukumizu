@@ -22,3 +22,15 @@ var SoftwareInfo = SoftwareInfoStr{
 	BuildType:   "Debug",
 	BuildTime:   "unknown",
 }
+
+type ConfigPathStr struct {
+	Global		  	string
+	BotUserConfig 	string
+	BotNodeConfig	string
+}
+
+var ConfigPath = ConfigPathStr{
+	Global:		  	"config.json",
+	BotUserConfig: 	"bot_user_config.json",
+	BotNodeConfig:	"bot_node_config.json",
+}

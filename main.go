@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -34,21 +33,16 @@ func main() {
 	global.SoftwareInfo.CommitHash = CommitHash
 	global.SoftwareInfo.BuildTime = BuildTime
 
-	// Parse CLI flags.
-	configPath_global := flag.String("config", "config.json", "Path to configuration file")
-	configPath_bot_user := flag.String("bot-user-config", "bot_user_config.json", "Path to bot user configuration file")
-	flag.Parse()
-
 	// Log startup banner.
 	postLog.Info(fmt.Sprintf("%s Ver.%s.%d.%s.%s Developed by %s at %s", global.SoftwareInfo.Name, global.SoftwareInfo.Version, global.SoftwareInfo.BuildVer, global.SoftwareInfo.BuildType, global.SoftwareInfo.CommitHash, global.SoftwareInfo.Developer, global.SoftwareInfo.BuildTime))
 
 	// Load configuration.
-	cfg, err := config.LoadGlobalConfig(*configPath_global)
+	cfg, err := config.LoadGlobalConfig(global.ConfigPath.Global)
 	if err != nil {
 		log.Fatalf("Failed to load global config: %v", err)
 	}
 
-	_, err = config.LoadBotUserConfig(*configPath_bot_user)
+	_, err = config.LoadBotUserConfig(global.ConfigPath.BotUserConfig)
 	if err != nil {
 		log.Fatalf("Failed to load bot user config: %v", err)
 	}
