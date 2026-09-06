@@ -5,7 +5,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 )
+
+// botNodeConfigMu guards botNodeConfig, the in-memory mirror of
+// bot_node_config.json.
+var (
+	botNodeConfigMu sync.RWMutex
+	botNodeConfig   BotNodeMembers
+)
+
+// NodeStatusNotifyEnabled reports whether the node identified by uuid should
+// broadcast status-change notifications, per bot_node_config.json. The flag is
+// allow-list only: a node notifies when its entry has enableStatusNotify set to
+// true, and stays silent when the entry is absent or not enabled.
+func NodeStatusNotifyEnabled(uuid string) bool {
+	botNodeConfigMu.RLock()
+	opts, ok := botNodeConfig[uuid]
+	botNodeConfigMu.RUnlock()
+	return ok && opts.EnableStatusNotify
+}
 
 // LoadGlobalConfig reads and parses the configuration file, applies defaults,
 // and stores it as a global singleton.
@@ -116,12 +135,14 @@ func LoadBotUserConfig(configPath string) (*BotUserConfig, error) {
 	return &cfg, nil
 }
 
-// SaveBotNodeConfig persists the given node UUIDs to the bot node config file.
-// Entries already present in the file are always preserved: a UUID Komari no
-// longer reports on a given fetch is kept rather than deleted, so per-node
-// settings for stale nodes survive a node-list refresh that does not include
-// them. UUIDs seen for the first time are added with an empty BotNodeOptions
-// entry. The resulting JSON has its object keys emitted in sorted order by
+// SaveBotNodeConfig persists the given node UUIDs to the bot node config file
+// and refreshes the in-memory mirror read by NodeStatusNotifyEnabled. Entries
+// already present in the file are always preserved: a UUID Komari no longer
+// reports on a given fetch is kept rather than deleted, so per-node settings
+// for stale nodes survive a node-list refresh that does not include them. UUIDs
+// seen for the first time are added disabled (enableStatusNotify defaults to
+// false); enable a node's status notifications by setting the flag to true in
+// the file. The resulting JSON has its object keys emitted in sorted order by
 // encoding/json, keeping the file deterministic across writes. The path is
 // supplied by the caller (typically global.ConfigPath.BotNodeConfig).
 func SaveBotNodeConfig(configPath string, uuids []string) error {
@@ -151,6 +172,10 @@ func SaveBotNodeConfig(configPath string, uuids []string) error {
 	if err := os.WriteFile(configPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write bot node config %s: %w", configPath, err)
 	}
+
+	botNodeConfigMu.Lock()
+	botNodeConfig = members
+	botNodeConfigMu.Unlock()
 	return nil
 }
 

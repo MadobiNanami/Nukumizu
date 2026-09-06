@@ -165,26 +165,26 @@ func (m *Manager) ShowBotServerList() {
 	}
 }
 
-// NotifyStatusChange sends a status change notification to all enabled controllers.
+// NotifyStatusChange sends a status change notification to all enabled
+// controllers. It honors the per-node allow-list in bot_node_config.json: a
+// node whose enableStatusNotify is not true is skipped entirely, so no
+// controller (chat bots or notification pipes) broadcasts its change.
 func (m *Manager) NotifyStatusChange(change node.StatusChange) {
+	if !config.NodeStatusNotifyEnabled(change.UUID) {
+		postLog.Debug(fmt.Sprintf("Status change for node %s skipped: enableStatusNotify is not enabled", change.UUID))
+		return
+	}
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-
-	cfg := config.C_globalConfig
-	templateStr := cfg.ControllerMessage.ServerStatusChanged
-	params := template.BuildParamsFromStatusChange(change)
 
 	for _, ctrl := range m.controllers {
 		if !ctrl.IsEnabled() {
 			continue
 		}
-
-		// Get the names of controllers that support commands for the message.
 		if err := ctrl.SendStatusChange(change); err != nil {
 			postLog.Warning(fmt.Sprintf("Controller %s failed to send status change: %v", ctrl.Name(), err))
 		}
-		_ = templateStr
-		_ = params
 	}
 }
 

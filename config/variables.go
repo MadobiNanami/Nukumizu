@@ -172,14 +172,17 @@ type BotUserConfig struct {
 var C_botUserConfig *BotUserConfig
 
 // BotNodeOptions holds per-node options stored in bot_node_config.json. The
-// struct is currently empty; per-node settings can be added here later without
-// invalidating existing files.
+// file is auto-populated by the node tracker for every node Komari reports;
+// per-node options are edited by hand in the JSON file.
 type BotNodeOptions struct {
+	// EnableStatusNotify is an allow-list switch: a node broadcasts status-change
+	// notifications only when this is true. Nodes default to false (silent)
+	// unless explicitly enabled.
+	EnableStatusNotify bool `json:"enableStatusNotify"`
 }
 
 // BotNodeMembers maps a node UUID (as reported by Komari) to its per-node
-// options. A plain struct value marshals to an empty JSON object, so
-// bot_node_config.json reads like:
+// options, e.g. bot_node_config.json:
 //
-//	{"<uuid1>": {}, "<uuid2>": {}}
+//	{"<uuid1>": {"enableStatusNotify": true}, "<uuid2>": {}}
 type BotNodeMembers map[string]BotNodeOptions
