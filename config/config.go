@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -113,6 +114,44 @@ func LoadBotUserConfig(configPath string) (*BotUserConfig, error) {
 	}
 	C_botUserConfig = &cfg
 	return &cfg, nil
+}
+
+// SaveBotNodeConfig persists the given node UUIDs to the bot node config file.
+// Entries already present in the file are always preserved: a UUID Komari no
+// longer reports on a given fetch is kept rather than deleted, so per-node
+// settings for stale nodes survive a node-list refresh that does not include
+// them. UUIDs seen for the first time are added with an empty BotNodeOptions
+// entry. The resulting JSON has its object keys emitted in sorted order by
+// encoding/json, keeping the file deterministic across writes. The path is
+// supplied by the caller (typically global.ConfigPath.BotNodeConfig).
+func SaveBotNodeConfig(configPath string, uuids []string) error {
+	// Start from whatever is already on disk so nothing is dropped. An empty or
+	// missing file is treated as an empty map.
+	members := make(BotNodeMembers)
+	if data, err := os.ReadFile(configPath); err == nil && len(bytes.TrimSpace(data)) > 0 {
+		if err := json.Unmarshal(data, &members); err != nil {
+			return fmt.Errorf("failed to parse existing bot node config %s: %w", configPath, err)
+		}
+	}
+
+	// Add every currently-fetched UUID, but never overwrite an entry that is
+	// already configured.
+	for _, uuid := range uuids {
+		if _, ok := members[uuid]; !ok {
+			members[uuid] = BotNodeOptions{}
+		}
+	}
+
+	data, err := json.MarshalIndent(members, "", "    ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal bot node config: %w", err)
+	}
+	data = append(data, '\n')
+
+	if err := os.WriteFile(configPath, data, 0o644); err != nil {
+		return fmt.Errorf("failed to write bot node config %s: %w", configPath, err)
+	}
+	return nil
 }
 
 // IsDebugMode returns whether debug mode is enabled.

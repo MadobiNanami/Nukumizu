@@ -170,3 +170,16 @@ type BotUserConfig struct {
 }
 
 var C_botUserConfig *BotUserConfig
+
+// BotNodeOptions holds per-node options stored in bot_node_config.json. The
+// struct is currently empty; per-node settings can be added here later without
+// invalidating existing files.
+type BotNodeOptions struct {
+}
+
+// BotNodeMembers maps a node UUID (as reported by Komari) to its per-node
+// options. A plain struct value marshals to an empty JSON object, so
+// bot_node_config.json reads like:
+//
+//	{"<uuid1>": {}, "<uuid2>": {}}
+type BotNodeMembers map[string]BotNodeOptions

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"nukumizu-backend/config"
+	"nukumizu-backend/global"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/postLog"
 )
@@ -223,6 +224,20 @@ func (c *Client) FetchNodes() ([]NodeInfo, error) {
 	nodes := make([]NodeInfo, 0, len(nodeMap))
 	for _, n := range nodeMap {
 		nodes = append(nodes, n)
+	}
+
+	// Persist the fetched node UUIDs to bot_node_config.json on every fetch
+	// (startup login, WebSocket reconnect and periodic refresh all funnel
+	// through FetchNodes) so the file always reflects the nodes Komari
+	// currently manages. A persistence failure is only logged: the node data
+	// itself was fetched successfully and must not be discarded over a disk
+	// write problem.
+	uuids := make([]string, len(nodes))
+	for i, n := range nodes {
+		uuids[i] = n.UUID
+	}
+	if err := config.SaveBotNodeConfig(global.ConfigPath.BotNodeConfig, uuids); err != nil {
+		postLog.Warning("Failed to save bot node config: " + err.Error())
 	}
 
 	postLog.Info(fmt.Sprintf("Fetched %d nodes from Komari", len(nodes)))
