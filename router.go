@@ -20,6 +20,7 @@ func SetupRouter() *http.ServeMux {
 
 	// Server endpoints (authenticated).
 	mux.HandleFunc("/api/server/list", handler.ServerListHandler)
+	mux.HandleFunc("/api/server/getInfo", handler.ServerGetInfoHandler)
 	mux.HandleFunc("/api/server/getStatus", handler.ServerGetStatusHandler)
 	mux.HandleFunc("/api/server/exec", handler.ServerExecHandler)
 
