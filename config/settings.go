@@ -121,9 +121,15 @@ func UpdateSettings(settingsType string, patch map[string]interface{}) error {
 
 // deepMergeSettings recursively overlays src onto dst. Object values merge
 // key-by-key so partial updates keep sibling keys untouched; arrays and scalars
-// always replace the destination value.
+// always replace the destination value. A JSON null in the payload removes that
+// key from dst, giving clients a way to delete entries (members, nodes, map
+// rows) through /api/settings/set.
 func deepMergeSettings(dst, src map[string]interface{}) {
 	for key, srcVal := range src {
+		if srcVal == nil {
+			delete(dst, key)
+			continue
+		}
 		srcObj, srcIsObj := srcVal.(map[string]interface{})
 		if srcIsObj {
 			if dstObj, ok := dst[key].(map[string]interface{}); ok {
