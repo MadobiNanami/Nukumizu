@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	db "nukumizu-backend/database"
@@ -98,10 +99,16 @@ func UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := db.CreateUser(req.Username, req.Password, "admin")
+	userID, err := db.RegisterFirstUser(req.Username, req.Password, "admin")
 	if err != nil {
+		// A concurrent registration may have won between the count check above
+		// and this insert; both map to the same "registration is closed" answer.
+		if errors.Is(err, db.ErrUsersExist) {
+			utils.SendErrorResponse(w, http.StatusForbidden, "registration is closed: users already exist")
+			return
+		}
 		postLog.Error("Failed to register user: " + err.Error())
-		utils.SendErrorResponse(w, http.StatusInternalServerError, "failed to register user, username may already exist")
+		utils.SendErrorResponse(w, http.StatusInternalServerError, "failed to register user")
 		return
 	}
 
