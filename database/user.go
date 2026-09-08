@@ -108,7 +108,7 @@ func RegisterFirstUser(username, password, level string) (int64, error) {
 		return 0, fmt.Errorf("failed to check existing users: %w", err)
 	}
 	if count > 0 {
-		return 0, errors.New("registration closed: users already exist")
+		return 0, ErrUsersExist
 	}
 
 	result, err := tx.Exec(

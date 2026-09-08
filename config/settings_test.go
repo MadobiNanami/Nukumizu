@@ -176,3 +176,46 @@ func TestGetSettingsBotNodeMissingFile(t *testing.T) {
 		t.Errorf("expected empty object for missing bot_node_config, got %s", data)
 	}
 }
+
+func TestUpdateSettingsRemovesKeysWithNull(t *testing.T) {
+	writeTempConfig(t, &global.ConfigPath.BotUserConfig, `{
+    "qq(napcat)": {
+        "admins": {
+            "3526453517": { "event_status_notify": true },
+            "740724778": { "event_status_notify": false }
+        },
+        "trustedGroups": {
+            "999": { "event_bot_started": true }
+        }
+    },
+    "telegram": {
+        "admins": {}
+    }
+}`)
+
+	// null removes a nested member and keeps its siblings; an empty section stays.
+	patch := map[string]interface{}{
+		"qq(napcat)": map[string]interface{}{
+			"admins": map[string]interface{}{
+				"3526453517": nil,
+			},
+		},
+	}
+	if err := UpdateSettings(SettingBotUserConfig, patch); err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+
+	data, err := GetSettings(SettingBotUserConfig)
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	got := string(data)
+	if strings.Contains(got, "3526453517") {
+		t.Errorf("deleted member still present:\n%s", got)
+	}
+	for _, want := range []string{"740724778", `"trustedGroups"`, `"telegram"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("unrelated content missing %q:\n%s", want, got)
+		}
+	}
+}
