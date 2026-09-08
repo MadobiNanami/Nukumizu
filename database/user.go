@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -81,12 +82,36 @@ func HashPassword(password string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// CreateUser inserts a new user into the database.
-func CreateUser(username, password, level string) (int64, error) {
+// ErrUsersExist is returned by RegisterFirstUser when the users table is not
+// empty. Registration is only ever allowed for the very first user.
+var ErrUsersExist = errors.New("registration rejected: only the first user can be registered via this endpoint")
+
+// RegisterFirstUser atomically creates the first user, but only while the users
+// table is empty. The emptiness check and the insert run inside a single
+// transaction. Because InitUserDB caps the pool at one connection, a concurrent
+// registration blocks at Begin until the in-flight transaction commits, so it
+// cannot observe the table as empty between the check and the insert. This
+// closes the check-then-insert race two simultaneous first-run registrations
+// would otherwise hit.
+func RegisterFirstUser(username, password, level string) (int64, error) {
 	hashedPassword := HashPassword(password)
 	registerDate := time.Now().Format("2006-01-02 15:04:05")
 
-	result, err := UserDB.Exec(
+	tx, err := UserDB.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var count int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM users").Scan(&count); err != nil {
+		return 0, fmt.Errorf("failed to check existing users: %w", err)
+	}
+	if count > 0 {
+		return 0, errors.New("registration closed: users already exist")
+	}
+
+	result, err := tx.Exec(
 		"INSERT INTO users (username, password, level, register_date) VALUES (?, ?, ?, ?)",
 		username, hashedPassword, level, registerDate,
 	)
@@ -94,6 +119,9 @@ func CreateUser(username, password, level string) (int64, error) {
 		return 0, fmt.Errorf("failed to create user: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit user creation: %w", err)
+	}
 	return result.LastInsertId()
 }
 
