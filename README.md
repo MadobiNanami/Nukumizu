@@ -37,7 +37,8 @@ nukumizu-backend/
 │   └── variables.go              # Software build metadata (name/version/developer)
 ├── handler/
 │   ├── user.go                   # /api/user/login, /api/user/register
-│   ├── server.go                 # /api/server/list, getStatus, exec
+│   ├── server.go                 # /api/server/list, getInfo, getStatus, exec
+│   ├── settings.go               # /api/settings/get, set
 │   └── health.go                 # /health
 ├── database/
 │   └── user.go                   # user.db (SQLite) user store
@@ -276,8 +277,11 @@ Tokens idle for more than 1 hour are expired (cleaned every 10 minutes); any aut
 | `/api/user/login` | POST | None | Log in. Body `{username, password}`. Returns `{token, userID, username, level, registerDate}`. |
 | `/api/user/register` | POST | None | Register the first user. Body `{username, password}`. Only allowed while no user exists; otherwise `403`. Returns `{token, userID, username, level}`. |
 | `/api/server/list` | GET | bot / admin | List all monitored servers. |
-| `/api/server/getStatus` | GET | bot / admin | Recent live status for a server. Query `?uuid=<uuid>`. Returns `{uuid, report}` or `404`. |
+| `/api/server/getInfo` | GET | admin | Static server info (mirrors the Bot's `/info`). Query `?uuid=<uuid>` (or `all`). Returns `{success, <uuid>: {uuid, name, info}}` — one entry per requested server. `404` for an unknown single uuid. |
+| `/api/server/getStatus` | GET | admin | Live server status (mirrors the Bot's `/status`). Query `?uuid=<uuid>` (or `all`). Returns `{success, <uuid>: {uuid, name, online, report}}`; `report` is `null` when the node has not reported yet. `404` for an unknown single uuid. |
 | `/api/server/exec` | POST | bot / admin | Execute a command. Body `{uuid: [<uuid>...], command}`. Dispatches a Komari task and polls until completion (or timeout). Returns `{taskID, results}`. |
+| `/api/settings/get` | GET | admin | `?type=global\|bot_user_config\|bot_node_config` | Returns `{success, config}`, where `config` is the selected config file's content (same layout as the JSON file). |
+| `/api/settings/set` | POST | admin | `?type=<same types>` + JSON body of partial updates, e.g. `{"system":{"debugMode":true}}` | Deep-merges the body into the selected config file, persists it, and reloads it in memory. Only the given keys change; arrays replace. |
 | `/health` | GET | None | Health check. Returns `{status, database}`. |
 | `/api/system/getLogs` | WebSocket | None | Streams logs. Sends the last 100 buffered entries, then live `{level, content, timestamp}` events. |
 

@@ -18,6 +18,38 @@ type ServerExecRequest struct {
 	Command string   `json:"command"`
 }
 
+// ServerInfoValue is the per-server payload returned by GET /api/server/getInfo,
+// mirroring the static server info the Bot prints for /info.
+type ServerInfoValue struct {
+	UUID string     `json:"uuid"`
+	Name string     `json:"name"`
+	Info *node.Info `json:"info"`
+}
+
+// ServerStatusValue is the per-server payload returned by GET /api/server/getStatus,
+// mirroring the live status the Bot prints for /status. Report is null when the
+// node is known but has not delivered a status report yet.
+type ServerStatusValue struct {
+	UUID   string        `json:"uuid"`
+	Name   string        `json:"name"`
+	Online bool          `json:"online"`
+	Report *node.Report  `json:"report"`
+}
+
+// collectTargetNodes resolves the uuid query parameter into the list of nodes
+// the caller asked for. uuid "all" selects every tracked node; any other uuid
+// selects that single node. A boolean reports whether the uuid was found.
+func collectTargetNodes(tracker *node.Tracker, uuid string) ([]*node.Node, bool) {
+	if uuid == "all" {
+		return tracker.GetAllNodes(), true
+	}
+	n, exists := tracker.GetNode(uuid)
+	if !exists {
+		return nil, false
+	}
+	return []*node.Node{n}, true
+}
+
 // ServerListHandler handles GET /api/server/list.
 func ServerListHandler(w http.ResponseWriter, r *http.Request) {
 	if !utils.Auth(w, r, "GET", "bot") {
@@ -38,9 +70,11 @@ func ServerListHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ServerGetStatusHandler handles GET /api/server/getStatus?uuid=xxx.
-func ServerGetStatusHandler(w http.ResponseWriter, r *http.Request) {
-	if !utils.Auth(w, r, "GET", "bot") {
+// ServerGetInfoHandler handles GET /api/server/getInfo?uuid=xxx|all.
+// Returns the static info of the requested server(s) as a uuid-keyed object,
+// mirroring the data the Bot uses for /info.
+func ServerGetInfoHandler(w http.ResponseWriter, r *http.Request) {
+	if !utils.Auth(w, r, "GET", "admin") {
 		return
 	}
 
@@ -50,19 +84,56 @@ func ServerGetStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// First try to get data from the local tracker.
 	tracker := node.GetTracker()
-	if tracker != nil {
-		if n, exists := tracker.GetNode(uuid); exists && n.LatestReport != nil {
-			utils.SendSuccessResponse(w, "", map[string]interface{}{
-				"uuid":   uuid,
-				"report": n.LatestReport,
-			})
-			return
-		}
+	if tracker == nil {
+		utils.SendErrorResponse(w, http.StatusInternalServerError, "node tracker not initialized")
+		return
 	}
 
-	utils.SendErrorResponse(w, http.StatusNotFound, fmt.Sprintf("no recent data for uuid: %s", uuid))
+	nodes, found := collectTargetNodes(tracker, uuid)
+	if !found {
+		utils.SendErrorResponse(w, http.StatusNotFound, fmt.Sprintf("server with uuid %s not found", uuid))
+		return
+	}
+
+	result := make(map[string]interface{}, len(nodes))
+	for _, n := range nodes {
+		result[n.UUID] = ServerInfoValue{UUID: n.UUID, Name: n.Name, Info: n.Info}
+	}
+	utils.SendSuccessResponse(w, "", result)
+}
+
+// ServerGetStatusHandler handles GET /api/server/getStatus?uuid=xxx|all.
+// Returns the live status of the requested server(s) as a uuid-keyed object,
+// mirroring the data the Bot uses for /status.
+func ServerGetStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if !utils.Auth(w, r, "GET", "admin") {
+		return
+	}
+
+	uuid := r.URL.Query().Get("uuid")
+	if uuid == "" {
+		utils.SendErrorResponse(w, http.StatusBadRequest, "missing uuid parameter")
+		return
+	}
+
+	tracker := node.GetTracker()
+	if tracker == nil {
+		utils.SendErrorResponse(w, http.StatusInternalServerError, "node tracker not initialized")
+		return
+	}
+
+	nodes, found := collectTargetNodes(tracker, uuid)
+	if !found {
+		utils.SendErrorResponse(w, http.StatusNotFound, fmt.Sprintf("server with uuid %s not found", uuid))
+		return
+	}
+
+	result := make(map[string]interface{}, len(nodes))
+	for _, n := range nodes {
+		result[n.UUID] = ServerStatusValue{UUID: n.UUID, Name: n.Name, Online: n.Online, Report: n.LatestReport}
+	}
+	utils.SendSuccessResponse(w, "", result)
 }
 
 // ServerExecHandler handles POST /api/server/exec.
