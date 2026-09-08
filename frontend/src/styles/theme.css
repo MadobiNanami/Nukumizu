@@ -1,0 +1,95 @@
+/* Nukumizu Console — design tokens. Light is the default, dark is applied by
+   setting data-theme="dark" on <html>. The look is a restrained, Apple-school
+   console: neutral warm-gray fields, one accent reserved for interaction, and
+   color used only where it carries meaning (health, log severity). */
+
+:root {
+    --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+    --bg: #eef0f3;
+    --bg-grad: linear-gradient(180deg, #f4f5f7 0%, #eaedf1 100%);
+    --surface: #ffffff;
+    --surface-2: #fafbfc;
+    --surface-3: #eef0f3;
+    --surface-hover: #e7eaee;
+
+    --text: #1b1e24;
+    --text-2: rgba(27, 30, 36, 0.68);
+    --text-3: rgba(27, 30, 36, 0.46);
+
+    --line: rgba(20, 24, 32, 0.09);
+    --line-strong: rgba(20, 24, 32, 0.16);
+
+    --accent: #006ee0;
+    --accent-strong: #0059b8;
+    --accent-soft: rgba(0, 110, 224, 0.09);
+    --accent-contrast: #ffffff;
+
+    --ok: #1f9d58;
+    --ok-soft: rgba(31, 157, 88, 0.12);
+    --warn: #c07b06;
+    --warn-soft: rgba(192, 123, 6, 0.13);
+    --bad: #d73a49;
+    --bad-soft: rgba(215, 58, 73, 0.1);
+    --muted: #8a919c;
+
+    --log-debug: #188a4b;
+    --log-info: #0a62d0;
+    --log-warn: #b5720a;
+    --log-error: #cc3340;
+    --log-fatal: #a31b28;
+
+    --r-s: 7px;
+    --r-m: 11px;
+    --r-l: 16px;
+    --r-pill: 999px;
+
+    --shadow-1: 0 1px 2px rgba(16, 22, 30, 0.05);
+    --shadow-2: 0 1px 1px rgba(16, 22, 30, 0.04), 0 6px 24px -8px rgba(16, 22, 30, 0.14);
+    --shadow-3: 0 2px 4px rgba(16, 22, 30, 0.06), 0 18px 48px -12px rgba(16, 22, 30, 0.22);
+
+    --nav-bg: rgba(15, 17, 21, 0.86);
+    --nav-text: rgba(255, 255, 255, 0.72);
+    --nav-text-hover: #ffffff;
+    --nav-line: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] {
+    --bg: #0b0c10;
+    --bg-grad: linear-gradient(180deg, #0e1014 0%, #090a0e 100%);
+    --surface: #15171d;
+    --surface-2: #1b1e25;
+    --surface-3: #24272f;
+    --surface-hover: #2b2f38;
+
+    --text: #eceef2;
+    --text-2: rgba(236, 238, 242, 0.66);
+    --text-3: rgba(236, 238, 242, 0.44);
+
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.14);
+
+    --accent: #2f8dff;
+    --accent-strong: #57a3ff;
+    --accent-soft: rgba(47, 141, 255, 0.16);
+
+    --ok: #3ecf83;
+    --ok-soft: rgba(62, 207, 131, 0.16);
+    --warn: #e3a23a;
+    --warn-soft: rgba(227, 162, 58, 0.16);
+    --bad: #ff6b76;
+    --bad-soft: rgba(255, 107, 118, 0.15);
+    --muted: #6b7280;
+
+    --log-debug: #43cf86;
+    --log-info: #4b9dff;
+    --log-warn: #efb458;
+    --log-error: #ff7b84;
+    --log-fatal: #ff525e;
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 1px 1px rgba(0, 0, 0, 0.4), 0 8px 28px -10px rgba(0, 0, 0, 0.6);
+    --shadow-3: 0 2px 4px rgba(0, 0, 0, 0.4), 0 22px 56px -16px rgba(0, 0, 0, 0.7);
+}
