@@ -166,6 +166,11 @@ func LoadBotUserConfig(configPath string) (*BotUserConfig, error) {
 // deterministic across writes. The path is supplied by the caller (typically
 // global.ConfigPath.BotNodeConfig).
 func SaveBotNodeConfig(configPath string, uuids []string) error {
+	// Serialize against admin edits of the same file via UpdateSettings so the
+	// two read-modify-write paths cannot drop each other's changes.
+	settingsLock.Lock()
+	defer settingsLock.Unlock()
+
 	// Start from whatever is already on disk so nothing is dropped. An empty or
 	// missing file is treated as an empty map.
 	members := make(BotNodeMembers)

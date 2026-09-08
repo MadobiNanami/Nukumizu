@@ -23,6 +23,10 @@ func SetupRouter() *http.ServeMux {
 	mux.HandleFunc("/api/server/getStatus", handler.ServerGetStatusHandler)
 	mux.HandleFunc("/api/server/exec", handler.ServerExecHandler)
 
+	// Settings endpoints (admin only).
+	mux.HandleFunc("/api/settings/get", handler.SettingsGetHandler)
+	mux.HandleFunc("/api/settings/set", handler.SettingsSetHandler)
+
 	// Health check endpoint.
 	mux.HandleFunc("/health", handler.HealthHandler)
 
