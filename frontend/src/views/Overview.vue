@@ -43,12 +43,13 @@ async function load() {
             serverApi.infoAll(),
             settingsApi.get('bot_node_config')
         ]);
-        const nodeConf = (nodes && nodes.config) || {};
+        const statusData = (status && status.data) || {};
+        const infoData = (info && info.data) || {};
+        const nodeConf = (nodes && nodes.data && nodes.data.config) || {};
         const list = [];
-        for (const key of Object.keys(status)) {
-            if (key === 'success') continue;
-            const s = status[key] || {};
-            const infoEntry = info[key] || {};
+        for (const key of Object.keys(statusData)) {
+            const s = statusData[key] || {};
+            const infoEntry = infoData[key] || {};
             const conf = nodeConf[key] || {};
             list.push({
                 uuid: s.uuid || key,

@@ -168,7 +168,7 @@ function defaults(f) {
 async function load() {
     try {
         const res = await settingsApi.get('global');
-        const cfg = (res && res.config) || {};
+        const cfg = (res && res.data && res.data.config) || {};
         for (const s of sections) {
             const obj = {};
             for (const f of s.fields) {

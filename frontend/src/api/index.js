@@ -5,13 +5,14 @@ export const authApi = {
     register: (username, password) => http.post('/user/register', { username, password })
 };
 
-// /api/server/getStatus?uuid=all → { success, "<uuid>": { uuid, name, online, report } }
+// /api/server/getStatus?uuid=all → { success, message, data: { "<uuid>": { uuid, name, online, report } } }
 export const serverApi = {
     statusAll: () => http.get('/server/getStatus?uuid=all'),
     infoAll: () => http.get('/server/getInfo?uuid=all')
 };
 
 // /api/settings/get?type=… / /api/settings/set?type=…
+// get → { success, message, data: { config } }.
 // `type` is one of global | bot_user_config | bot_node_config.
 // For set, pass a partial object; a JSON null value removes that key.
 export const settingsApi = {
