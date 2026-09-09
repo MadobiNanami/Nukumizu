@@ -34,18 +34,20 @@ async function submit() {
     try {
         if (mode.value === 'login') {
             const res = await authApi.login(form.username.trim(), form.password);
-            afterLogin(res.token, {
-                userID: res.userID,
-                username: res.username,
-                level: res.level,
-                registerDate: res.registerDate
+            const d = res.data;
+            afterLogin(d.token, {
+                userID: d.userID,
+                username: d.username,
+                level: d.level,
+                registerDate: d.registerDate
             });
         } else {
             const res = await authApi.register(form.username.trim(), form.password);
-            afterLogin(res.token, {
-                userID: res.userID,
-                username: res.username,
-                level: res.level
+            const d = res.data;
+            afterLogin(d.token, {
+                userID: d.userID,
+                username: d.username,
+                level: d.level
             });
             toast.success('Admin created — welcome to Nukumizu');
         }

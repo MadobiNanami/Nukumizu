@@ -11,7 +11,7 @@ import (
 
 // SettingsGetHandler handles GET /api/settings/get?type=xxx.
 // type selects which config file to return and may be one of
-// "global", "bot_user_config" or "bot_node_config"; the returned "config"
+// "global", "bot_user_config" or "bot_node_config"; the returned data.config
 // object has the same layout as the source JSON file.
 func SettingsGetHandler(w http.ResponseWriter, r *http.Request) {
 	if !utils.Auth(w, r, "GET", "admin") {

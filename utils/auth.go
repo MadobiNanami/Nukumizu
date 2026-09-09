@@ -203,7 +203,9 @@ func StartTokenCleaner() {
 	}()
 }
 
-// SendSuccessResponse sends a standardized JSON success response.
+// SendSuccessResponse sends a standardized JSON success response. Every payload
+// is nested under a single "data" key, so success responses use the envelope
+// {"success": true, "message": "...", "data": {...}}.
 func SendSuccessResponse(w http.ResponseWriter, message string, data map[string]interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	resp := map[string]interface{}{
@@ -212,9 +214,10 @@ func SendSuccessResponse(w http.ResponseWriter, message string, data map[string]
 	if message != "" {
 		resp["message"] = message
 	}
-	for k, v := range data {
-		resp[k] = v
+	if data == nil {
+		data = map[string]interface{}{}
 	}
+	resp["data"] = data
 	json.NewEncoder(w).Encode(resp)
 }
 

@@ -50,7 +50,7 @@ const defaultOpts = () => ({
 async function load() {
     try {
         const res = await settingsApi.get('bot_user_config');
-        const cfg = (res && res.config) || {};
+        const cfg = (res && res.data && res.data.config) || {};
         const flat = [];
         for (const c of CHANNELS) {
             const chData = cfg[c.key] || {};
