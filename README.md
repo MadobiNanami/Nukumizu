@@ -326,15 +326,32 @@ QQ and Telegram are *interactive* channels. Email, ntfy, and webhook are **statu
 
 ## Building
 
-Requires Go 1.25+. Repo includes helper scripts that bake the current git commit and build time into the binary via `-ldflags`:
+Requires Go 1.25+ and — to build the web console — Node.js 22+.
+
+Helper scripts in the repo root bake the current git commit and build time into the binary via `-ldflags`. The name states the **target** platform, and each target has a Windows (`.bat`) and a Linux/macOS (`.sh`) flavor: run the flavor for the host you are building on, since every script cross-compiles to its target.
+
+| Script | Output |
+|---|---|
+| `build-linux-x86_64.sh` / `build-linux-x86_64.bat` | `nukumizu-linux-amd64` |
+| `build-win-x86_64.sh` / `build-win-x86_64.bat` | `nukumizu-windows-amd64.exe` |
 
 ```bash
-# Windows (cross-compile to Linux amd64)
-build-linux-x86_64.bat
+# Linux / macOS
+./build-linux-x86_64.sh
+./build-win-x86_64.sh
 
-# Windows amd64
+# Windows
+build-linux-x86_64.bat
 build-win-x86_64.bat
 ```
+
+Pass `--frontend` to build the Vue console first (`npm ci` + `npm run build` inside `frontend/`); without it only the backend is compiled:
+
+```bash
+./build-linux-x86_64.sh --frontend
+```
+
+The console is **not embedded in the binary** — `web/` reads `frontend/dist` from disk at runtime. A binary built without `--frontend` still starts and serves the API, but `/` answers `500 index.html not found` until a built `frontend/dist` sits in the working directory. Build it once with `--frontend`, then re-run any of the four scripts without the flag.
 
 Equivalent manual builds:
 
@@ -351,6 +368,8 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
 ```
 
 `main.CommitHash` and `main.BuildTime` are surfaced in logs and in the `BOT_STARTED` message.
+
+CI (`.github/workflows/build.yml`) runs both flavors — `.sh` on `ubuntu-latest`, `.bat` on `windows-latest` — and uploads the two binaries plus the frontend bundle as artifacts.
 
 ## Running
 
