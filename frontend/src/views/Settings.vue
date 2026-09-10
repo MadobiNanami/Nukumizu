@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
 import { settingsApi } from '../api/index.js';
+import { debugMode } from '../utils/runtime.js';
 import { toast } from '../utils/toast.js';
 import Toggle from '../components/Toggle.vue';
 import TagsEditor from '../components/TagsEditor.vue';
@@ -155,6 +156,18 @@ function getVal(obj, path, fb) {
     return cur === undefined || cur === null ? fb : cur;
 }
 
+// hasVal reports whether a path actually resolves in the loaded config. A
+// missing key and a key whose value equals the fallback are indistinguishable
+// from getVal's return value alone, so misses are detected separately.
+function hasVal(obj, path) {
+    let cur = obj;
+    for (const k of path) {
+        if (cur === null || cur === undefined || typeof cur !== 'object') return false;
+        cur = cur[k];
+    }
+    return cur !== undefined && cur !== null;
+}
+
 function defaults(f) {
     switch (f.type) {
         case 'bool': return false;
@@ -172,7 +185,16 @@ async function load() {
         for (const s of sections) {
             const obj = {};
             for (const f of s.fields) {
-                obj[f.key] = getVal(cfg, fieldPath(f), defaults(f));
+                // Mirror wrapRoot() on save: prepend the section's root path so
+                // the value is read from the same place it is written to.
+                const path = [...s.root, ...fieldPath(f)];
+                obj[f.key] = getVal(cfg, path, defaults(f));
+                if (debugMode.value) {
+                    console.log(`[Settings] Loaded ${s.id}.${f.key}:`, obj[f.key]);
+                    if (!hasVal(cfg, path)) {
+                        console.warn(`[Settings] ${s.id}.${f.key} missing at "${path.join('.')}" — using default`);
+                    }
+                }
             }
             vals[s.id] = obj;
         }

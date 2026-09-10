@@ -16,6 +16,9 @@ export async function loadDebugMode() {
         const config = (res && res.data && res.data.config) || {};
         const system = config.system || {};
         debugMode.value = !!system.debugMode;
+        if (debugMode.value) {
+            console.log('Debug mode enabled');
+        }
     } catch {
         // Non-fatal: the flag simply keeps its current value.
     }
