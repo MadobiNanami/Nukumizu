@@ -1,0 +1,79 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same ref makes an in-flight build obsolete.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Let both platforms finish, so a failure on one still reports the other.
+      fail-fast: false
+      matrix:
+        include:
+          # The .sh scripts are run through `bash` because a checkout made on
+          # Windows does not carry the executable bit, so ./build-*.sh would
+          # come back as "Permission denied" on the Linux runner.
+          - os: ubuntu-latest
+            build_linux: bash build-linux-x86_64.sh
+            build_windows: bash build-win-x86_64.sh
+          - os: windows-latest
+            build_linux: ./build-linux-x86_64.bat
+            build_windows: ./build-win-x86_64.bat
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # --frontend builds the Vue app inside the script. The second call omits
+      # it: the frontend is platform independent and dist/ is already built.
+      - name: Build Linux (amd64)
+        run: ${{ matrix.build_linux }} --frontend
+
+      - name: Build Windows (amd64)
+        run: ${{ matrix.build_windows }}
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: nukumizu-binaries-${{ matrix.os }}
+          path: |
+            nukumizu-linux-amd64
+            nukumizu-windows-amd64.exe
+          if-no-files-found: error
+
+      # The binaries read frontend/dist at runtime (os.DirFS in web/embed.go),
+      # they do not embed it. Uploaded once — the frontend is platform
+      # independent, so both matrix legs produce the same files.
+      - name: Upload frontend bundle
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nukumizu-frontend
+          path: frontend/dist
+          if-no-files-found: error
