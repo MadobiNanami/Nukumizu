@@ -6,6 +6,7 @@ import (
 
 	"nukumizu-backend/handler"
 	"nukumizu-backend/postLog"
+	"nukumizu-backend/web"
 )
 
 // SetupRouter registers all HTTP routes and returns a configured ServeMux.
@@ -38,8 +39,8 @@ func SetupRouter() *http.ServeMux {
 		mux.HandleFunc("/api/system/getLogs", logSocketHandler.Handle)
 	}
 
-	// Catch-all 404 handler.
-	mux.HandleFunc("/", NotFoundHandler)
+	// Static file serving for the web frontend.
+	mux.HandleFunc("/", web.ServeStatic)
 
 	postLog.Info("Router setup completed")
 	return mux
