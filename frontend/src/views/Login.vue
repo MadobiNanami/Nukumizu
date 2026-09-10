@@ -3,6 +3,7 @@ import { reactive, ref, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { authApi } from '../api/index.js';
 import { setSession } from '../utils/auth.js';
+import { loadDebugMode } from '../utils/runtime.js';
 import { toast } from '../utils/toast.js';
 
 const router = useRouter();
@@ -23,6 +24,8 @@ function goTo(target) {
 
 function afterLogin(token, user) {
     setSession(token, user);
+    // The settings endpoint requires the token we just stored.
+    loadDebugMode();
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/overview';
     router.push(redirect);
 }
