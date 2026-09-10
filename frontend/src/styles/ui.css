@@ -244,6 +244,14 @@ h1, h2, h3, h4 {
     margin-top: 18px;
 }
 
+/* Cards inside a grid are spaced by `gap`. Without this the stacked-card rule
+   above would inset every card but the first, leaving the first one sticking
+   up by 18px. */
+.grid-2 > .card,
+.grid-3 > .card {
+    margin-top: 0;
+}
+
 .card-head {
     display: flex;
     align-items: center;
@@ -651,6 +659,7 @@ h1, h2, h3, h4 {
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+    margin-bottom: 18px;
 }
 
 .toolbar .spacer {
