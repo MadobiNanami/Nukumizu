@@ -15,6 +15,7 @@ Nukumizu connects to a Komari Dashboard instance, keeps an in-memory view of eve
 - **Customizable message templates** — every bot/notification message is rendered from a template in `config.json`.
 - **Storage** — SQLite (pure-Go driver) for `user.db` and `log.db`; safe on network shares (WAL disabled).
 - **Dashboard API** — token-authenticated REST API plus a live log-streaming WebSocket.
+- **Web console** — a Vue 3 admin UI for browsing nodes, editing `config.json`, managing bot trust, and tailing logs. The Go server serves the built bundle from `frontend/dist`.
 
 ## How it works
 
@@ -50,36 +51,51 @@ nukumizu-backend/
 │   ├── database.go               # log.db (SQLite, one table per run)
 │   ├── logBroadcaster.go         # Fan-out to WebSocket clients
 │   └── logSocketHandler.go       # /api/system/getLogs WebSocket handler
-└── internal/
-    ├── komari/
-    │   ├── client.go             # Komari HTTP/JSON-RPC client (login, nodes, task exec/poll)
-    │   └── ws.go                 # Komari status WebSocket (poll + reconnect)
-    ├── node/
-    │   └── tracker.go            # Thread-safe server state, status-change detection
-    ├── netproxy/
-    │   └── netproxy.go           # Unified network proxy for controllers
-    ├── template/
-    │   └── template.go           # Message template renderer ({{ variables }})
-    └── controller/
-        ├── controller.go         # Manager, Controller / BotController interfaces
-        ├── trigger.go            # Command parsing, authorization, routing
-        ├── processor.go          # Command handlers
-        ├── utils.go
-        └── pipes/
-            ├── email.go          # Email notification pipe
-            ├── ntfy.go           # ntfy notification pipe
-            ├── webhook.go        # Webhook notification pipe
-            ├── qq_napcat/
-            │   ├── qq.go         # QQ (NapCat / OneBot 11) bot controller
-            │   └── napcat.go     # NapCat WebSocket + HTTP API client
-            └── telegram/
-                ├── telegram.go   # Telegram bot controller (go-telegram/bot, long polling)
-                └── send.go       # Message sending / splitting (Telegram Markdown)
+├── web/
+│   ├── embed.go                  # Locates the built console (frontend/dist)
+│   └── handler.go                # Static file serving + SPA fallback
+├── internal/
+│   ├── komari/
+│   │   ├── client.go             # Komari HTTP/JSON-RPC client (login, nodes, task exec/poll)
+│   │   └── ws.go                 # Komari status WebSocket (poll + reconnect)
+│   ├── node/
+│   │   └── tracker.go            # Thread-safe server state, status-change detection
+│   ├── netproxy/
+│   │   └── netproxy.go           # Unified network proxy for controllers
+│   ├── template/
+│   │   └── template.go           # Message template renderer ({{ variables }})
+│   └── controller/
+│       ├── controller.go         # Manager, Controller / BotController interfaces
+│       ├── trigger.go            # Command parsing, authorization, routing
+│       ├── processor.go          # Command handlers
+│       ├── utils.go
+│       └── pipes/
+│           ├── email.go          # Email notification pipe
+│           ├── ntfy.go           # ntfy notification pipe
+│           ├── webhook.go        # Webhook notification pipe
+│           ├── qq_napcat/
+│           │   ├── qq.go         # QQ (NapCat / OneBot 11) bot controller
+│           │   └── napcat.go     # NapCat WebSocket + HTTP API client
+│           └── telegram/
+│               ├── telegram.go   # Telegram bot controller (go-telegram/bot, long polling)
+│               └── send.go       # Message sending / splitting (Telegram Markdown)
+└── frontend/                     # Vue 3 admin console (Vite)
+    ├── index.html
+    ├── vite.config.js            # Dev server; proxies /api to the backend
+    └── src/
+        ├── main.js               # Bootstrap: theme + runtime flags
+        ├── App.vue               # Root component + toast host
+        ├── api/index.js          # Wrappers around the REST endpoints
+        ├── router/index.js       # Routes and the login guard
+        ├── utils/                # http/auth/theme/toast/format/runtime helpers
+        ├── components/           # Modal, Toggle, editors, top bar, side bar
+        └── views/                # Login, Overview, Trusted, Settings, Logs
 ```
 
 ## Requirements
 
 - Go **1.25** or newer
+- [Node.js](https://nodejs.org) **22** or newer — only needed to build the web console; a prebuilt binary does not require it
 - A running [Komari](https://www.komari.wiki) Dashboard instance reachable from this host
 - For QQ: a [NapCat](https://napneko.github.io/) instance exposing an OneBot 11 WebSocket + HTTP endpoint
 - For Telegram: a bot token from [@BotFather](https://t.me/BotFather)
@@ -384,6 +400,28 @@ run.bat
 ```
 
 On startup the program logs in to Komari, loads node state, connects the status WebSocket, then starts each enabled controller and the HTTP server on `listenAddr:listenPort`. Press `Ctrl+C` for a graceful shutdown.
+
+### Frontend development
+
+`run.bat` only runs the Go backend — it does not build the console. While working on the frontend, run the two sides separately:
+
+```bash
+# Terminal 1 — backend (API + WebSocket) on :8080
+run.bat
+
+# Terminal 2 — Vite dev server with hot reload on :5173
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. The dev server proxies `/api` — including the log WebSocket — to `http://127.0.0.1:8080`; point it elsewhere with `NUKUMIZU_API` if the backend listens on another address:
+
+```bash
+NUKUMIZU_API=http://192.168.1.10:8080 npm run dev
+```
+
+For a production build the Go server serves `frontend/dist` itself, on the normal listen address — see [Building](#building).
 
 ## License
 
