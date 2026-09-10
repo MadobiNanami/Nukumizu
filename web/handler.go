@@ -9,12 +9,11 @@ import (
 
 var staticFS http.FileSystem
 
+// This init runs after embed.go's, which sets StaticFiles (Go initializes a
+// package's files in lexical file-name order). StaticFiles is already rooted
+// at frontend/dist, so it is served as-is — no further fs.Sub is needed.
 func init() {
-	subFS, err := fs.Sub(StaticFiles, "dist")
-	if err != nil {
-		panic(err)
-	}
-	staticFS = http.FS(subFS)
+	staticFS = http.FS(StaticFiles)
 }
 
 func ServeStatic(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +54,11 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 func serveIndexHTML(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
-	data, _ := StaticFiles.ReadFile("dist/index.html")
+	data, err := fs.ReadFile(StaticFiles, "index.html")
+	if err != nil {
+		http.Error(w, "index.html not found", http.StatusInternalServerError)
+		return
+	}
 	w.Write(data)
 }
 
