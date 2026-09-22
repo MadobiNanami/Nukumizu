@@ -6,6 +6,11 @@ bot_node_config.json
 *.exe
 nukumizu-linux-amd64
 
+# The built web console. web/embed.go compiles it into the binary, and the
+# build-*.sh / build-*.bat scripts rebuild it before every compile.
+/web/dist/
+/frontend/dist/
+
 # SQLite database files. They live on a network share (Y:), and git/cloud
 # sync touching them while a WAL database is open corrupts the WAL index and
 # crashes the process (EXCEPTION_IN_PAGE_ERROR). Never track these.

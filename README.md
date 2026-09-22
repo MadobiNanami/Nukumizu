@@ -15,7 +15,7 @@ Nukumizu connects to a Komari Dashboard instance, keeps an in-memory view of eve
 - **Customizable message templates** — every bot/notification message is rendered from a template in `config.json`.
 - **Storage** — SQLite (pure-Go driver) for `user.db` and `log.db`; safe on network shares (WAL disabled).
 - **Dashboard API** — token-authenticated REST API plus a live log-streaming WebSocket.
-- **Web console** — a Vue 3 admin UI for browsing nodes, editing `config.json`, managing bot trust, and tailing logs. The Go server serves the built bundle from `frontend/dist`.
+- **Web console** — a Vue 3 admin UI for browsing nodes, editing `config.json`, managing bot trust, and tailing logs. The built bundle is embedded in the binary, so a single executable serves both the API and the console.
 
 ## How it works
 
@@ -52,7 +52,8 @@ nukumizu-backend/
 │   ├── logBroadcaster.go         # Fan-out to WebSocket clients
 │   └── logSocketHandler.go       # /api/system/getLogs WebSocket handler
 ├── web/
-│   ├── embed.go                  # Locates the built console (frontend/dist)
+│   ├── embed.go                  # Embeds the built console (web/dist) in the binary
+│   ├── dist/                     # Vite build output — generated, gitignored
 │   └── handler.go                # Static file serving + SPA fallback
 ├── internal/
 │   ├── komari/
@@ -344,7 +345,7 @@ QQ and Telegram are *interactive* channels. Email, ntfy, and webhook are **statu
 
 Requires Go 1.25+ and — to build the web console — Node.js 22+.
 
-Helper scripts in the repo root bake the current git commit and build time into the binary via `-ldflags`. The name states the **target** platform, and each target has a Windows (`.bat`) and a Linux/macOS (`.sh`) flavor: run the flavor for the host you are building on, since every script cross-compiles to its target.
+Helper scripts in the repo root build the Vue console first, then compile the backend with it embedded. They also bake the current git commit and build time into the binary via `-ldflags`. The name states the **target** platform, and each target has a Windows (`.bat`) and a Linux/macOS (`.sh`) flavor: run the flavor for the host you are building on, since every script cross-compiles to its target.
 
 | Script | Output |
 |---|---|
@@ -361,17 +362,17 @@ build-linux-x86_64.bat
 build-win-x86_64.bat
 ```
 
-Pass `--frontend` to build the Vue console first (`npm ci` + `npm run build` inside `frontend/`); without it only the backend is compiled:
+The console is **embedded in the binary**. Vite writes it to `web/dist` and `web/embed.go` compiles that directory in with `go:embed`, so the executable serves the whole frontend on its own — copy it anywhere, with neither `frontend/` nor `web/dist` next to it, and `/` still returns the console. The build scripts run `npm ci` when `frontend/node_modules` is missing and `npm run build` on every run, so they need Node.js 22+ on the build machine (not on the machine that runs the binary).
 
-```bash
-./build-linux-x86_64.sh --frontend
-```
-
-The console is **not embedded in the binary** — `web/` reads `frontend/dist` from disk at runtime. A binary built without `--frontend` still starts and serves the API, but `/` answers `500 index.html not found` until a built `frontend/dist` sits in the working directory. Build it once with `--frontend`, then re-run any of the four scripts without the flag.
+Building the backend therefore requires the console to have been built at least once: `web/dist` is a generated, gitignored directory, and `go build` fails with `pattern all:dist: no matching files found` until it exists. Any `build-*` script handles that ordering for you.
 
 Equivalent manual builds:
 
 ```bash
+# 1. Console (once per frontend change)
+cd frontend && npm ci && npm run build && cd ..
+
+# 2. Backend
 # Linux / macOS
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -ldflags "-X main.CommitHash=$(git rev-parse --short HEAD) -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -385,7 +386,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
 
 `main.CommitHash` and `main.BuildTime` are surfaced in logs and in the `BOT_STARTED` message.
 
-CI (`.github/workflows/build.yml`) runs both flavors — `.sh` on `ubuntu-latest`, `.bat` on `windows-latest` — and uploads the two binaries plus the frontend bundle as artifacts.
+CI (`.github/workflows/build.yml`) runs both flavors — `.sh` on `ubuntu-latest`, `.bat` on `windows-latest` — and uploads the two self-contained binaries as artifacts.
 
 ## Running
 
@@ -403,7 +404,7 @@ On startup the program logs in to Komari, loads node state, connects the status 
 
 ### Frontend development
 
-`run.bat` only runs the Go backend — it does not build the console. While working on the frontend, run the two sides separately:
+`run.bat` only runs the Go backend — it does not build the console, so `web/dist` must already exist (run any `build-*` script once, or `npm run build` in `frontend/`) or `go run` fails to compile. While working on the frontend, run the two sides separately:
 
 ```bash
 # Terminal 1 — backend (API + WebSocket) on :8080
@@ -421,7 +422,7 @@ Open http://localhost:5173. The dev server proxies `/api` — including the log 
 NUKUMIZU_API=http://192.168.1.10:8080 npm run dev
 ```
 
-For a production build the Go server serves `frontend/dist` itself, on the normal listen address — see [Building](#building).
+For a production build the Go server serves the embedded console itself, on the normal listen address — see [Building](#building). Vite is not involved at runtime, so `npm run build` alone does not change what a running binary serves: rebuild the binary to pick up frontend changes.
 
 ## License
 
