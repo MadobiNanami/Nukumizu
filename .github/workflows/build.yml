@@ -28,9 +28,7 @@ jobs:
           # come back as "Permission denied" on the Linux runner.
           - os: ubuntu-latest
             build_linux: bash build-linux-x86_64.sh
-            build_windows: bash build-win-x86_64.sh
           - os: windows-latest
-            build_linux: ./build-linux-x86_64.bat
             build_windows: ./build-win-x86_64.bat
 
     steps:
