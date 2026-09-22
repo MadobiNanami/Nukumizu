@@ -14,9 +14,9 @@ type SoftwareInfoStr struct {
 
 var SoftwareInfo = SoftwareInfoStr{
 	Name:        "Nukumizu",
-	Version:     "0.1.1",
+	Version:     "0.1.2",
 	Developer:   "Madobi Nanami",
-	BuildVer:    2,
+	BuildVer:    4,
 	CommitHash:  "unknown",
 	Description: "Remote server monitoring and command execution subsystem for Komari",
 	BuildType:   "pre-release",
