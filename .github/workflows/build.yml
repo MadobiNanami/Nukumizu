@@ -48,10 +48,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # --frontend builds the Vue app inside the script. The second call omits
-      # it: the frontend is platform independent and dist/ is already built.
+      # Each script builds the Vue console itself and then compiles it into the
+      # binary (web/embed.go), so the uploaded executables are self-contained.
       - name: Build Linux (amd64)
-        run: ${{ matrix.build_linux }} --frontend
+        run: ${{ matrix.build_linux }}
 
       - name: Build Windows (amd64)
         run: ${{ matrix.build_windows }}
@@ -63,15 +63,4 @@ jobs:
           path: |
             nukumizu-linux-amd64
             nukumizu-windows-amd64.exe
-          if-no-files-found: error
-
-      # The binaries read frontend/dist at runtime (os.DirFS in web/embed.go),
-      # they do not embed it. Uploaded once — the frontend is platform
-      # independent, so both matrix legs produce the same files.
-      - name: Upload frontend bundle
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: nukumizu-frontend
-          path: frontend/dist
           if-no-files-found: error

@@ -24,14 +24,14 @@ The dev server proxies `/api` (and the log websocket) to the backend. By default
 $env:NUKUMIZU_API = "http://192.168.20.4:8080"; npm run dev
 ```
 
-Production build (static assets only):
+Production build:
 
 ```bash
-npm run build      # outputs dist/
+npm run build      # outputs ../web/dist
 npm run preview
 ```
 
-The backend does not serve static files, so put `dist/` behind any static server and proxy `/api` (and `ws://…/api/system/getLogs`) to the Nukumizu backend.
+Vite writes to `../web/dist` rather than `frontend/dist` (see `build.outDir` in `vite.config.js`) because the Go backend embeds that directory into the binary — `go:embed` cannot reach outside the package it sits in, so the output has to live under `web/`. The repo's `build-*` scripts run this build for you and compile the backend afterwards; `npm run build` alone does not change what an already-built binary serves.
 
 ## API contract notes
 

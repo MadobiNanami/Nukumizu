@@ -4,20 +4,32 @@ setlocal enabledelayedexpansion
 :: Build from the repository root, however the script was invoked.
 cd /d "%~dp0"
 
-:: Optional first argument: --frontend also builds the Vue frontend, which web/
-:: serves at runtime from frontend/dist. Omitted, only the backend is compiled.
-set BUILD_FRONTEND=0
-if /i "%~1"=="--frontend" set BUILD_FRONTEND=1
-
-if not "%BUILD_FRONTEND%"=="1" goto :backend
-
+:: The Vue console is built first and embedded into the binary (web\dist, see
+:: web\embed.go), so the executable serves the whole frontend on its own:
+:: neither frontend\ nor web\dist\ is needed where it runs.
 echo Building frontend...
 cd frontend
-call npm ci
-if errorlevel 1 goto :fail
+
+:: node_modules is gitignored, so a fresh checkout (CI included) installs from
+:: the lockfile; a warm tree only rebuilds.
+if not exist "node_modules" (
+    call npm ci
+    if errorlevel 1 goto :frontend_failed
+)
+
 call npm run build
-if errorlevel 1 goto :fail
+if errorlevel 1 goto :frontend_failed
 cd ..
+
+:: go:embed on web\dist fails anyway, but this names the real problem.
+if exist "web\dist\index.html" goto :backend
+echo Frontend build produced no web\dist\index.html.
+goto :fail
+
+:frontend_failed
+cd ..
+echo Frontend build failed.
+goto :fail
 
 :backend
 echo Building for Linux (amd64)...

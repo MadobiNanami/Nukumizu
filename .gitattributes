@@ -1,0 +1,9 @@
+* text=auto
+
+# cmd.exe misparses a batch file whose lines end in a bare LF: it loses
+# characters at the start of later lines, so a working script silently turns
+# into "command not recognized" errors. Force CRLF on checkout.
+*.bat text eol=crlf
+
+# The mirror image: a CR at the end of a shebang or line breaks these.
+*.sh  text eol=lf

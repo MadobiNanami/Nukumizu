@@ -1,3 +1,7 @@
+## Ver.0.1.2.4
+### Bug Fixes
+- [Integrate frontend build into backend binary]("")
+
 ## Ver.0.1.2.3-1c4ad61.pre-release
 ### Features
 - [Add frontend webpage to make everything easy to control]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/a90b4f5497dfae5f9b6a3132d091a528fdbdf612")

@@ -7,13 +7,12 @@ import (
 	"strings"
 )
 
-var staticFS http.FileSystem
-
-// This init runs after embed.go's, which sets StaticFiles (Go initializes a
-// package's files in lexical file-name order). StaticFiles is already rooted
-// at frontend/dist, so it is served as-is — no further fs.Sub is needed.
-func init() {
-	staticFS = http.FS(StaticFiles)
+// staticFS wraps the embedded frontend for net/http. StaticFiles is already
+// rooted at the directory Vite writes to, so it is served as-is — no further
+// fs.Sub is needed. http.FS copies a file that is not an io.Seeker into memory
+// before serving it, which keeps this working whatever fs.FS StaticFiles is.
+func staticFS() http.FileSystem {
+	return http.FS(StaticFiles)
 }
 
 func ServeStatic(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +24,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 		}
 
 		filePath := strings.TrimPrefix(urlPath, "/")
-		f, err := staticFS.Open(filePath)
+		f, err := staticFS().Open(filePath)
 		if err != nil {
 			serveIndexHTML(w)
 			return
