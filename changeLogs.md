@@ -1,6 +1,6 @@
 ## Ver.0.1.2.4
 ### Bug Fixes
-- [Integrate frontend build into backend binary]("")
+- [Integrate frontend build into backend binary]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/cc4aebde6a5a4fba5eeb65ff2feccdd06dc6529d")
 
 ## Ver.0.1.2.3-1c4ad61.pre-release
 ### Features
