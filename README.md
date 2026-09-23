@@ -14,7 +14,7 @@ Nukumizu connects to a Komari Dashboard instance, keeps an in-memory view of eve
 - **Network proxy** — a global proxy URL can be enabled per controller (`networkUseProxy`) for HTTP, WebSocket, and even SMTP (HTTP CONNECT tunnel).
 - **Customizable message templates** — every bot/notification message is rendered from a template in `config.json`.
 - **Storage** — SQLite (pure-Go driver) for `user.db` and `log.db`; safe on network shares (WAL disabled).
-- **Dashboard API** — token-authenticated REST API plus a live log-streaming WebSocket.
+- **Dashboard API** — token-authenticated REST API plus an admin-only live log-streaming WebSocket.
 - **Web console** — a Vue 3 admin UI for browsing nodes, editing `config.json`, managing bot trust, and tailing logs. The built bundle is embedded in the binary, so a single executable serves both the API and the console.
 
 ## How it works
@@ -45,12 +45,12 @@ nukumizu-backend/
 │   └── user.go                   # user.db (SQLite) user store
 ├── utils/
 │   ├── auth.go                   # Token management, Auth middleware, JSON responses
-│   └── middleware.go             # Rate limit, CORS, XSS/security headers
+│   └── middleware.go             # Rate limit, CORS, XSS headers, WebSocket auth
 ├── postLog/                      # Logging subsystem
 │   ├── postLog.go                # Leveled logger (stdout + broadcast)
 │   ├── database.go               # log.db (SQLite, one table per run)
 │   ├── logBroadcaster.go         # Fan-out to WebSocket clients
-│   └── logSocketHandler.go       # /api/system/getLogs WebSocket handler
+│   └── logSocketHandler.go       # /api/system/getLogs WebSocket handler (admin only)
 ├── web/
 │   ├── embed.go                  # Embeds the built console (web/dist) in the binary
 │   ├── dist/                     # Vite build output — generated, gitignored
@@ -287,6 +287,8 @@ Requests are authenticated with HTTP headers:
 
 Tokens idle for more than 1 hour are expired (cleaned every 10 minutes); any authenticated call refreshes the timer. Permission levels: `None`, `bot`, `admin`. Endpoints requiring `bot` accept both `bot` and `admin` tokens. Currently registration/login always issue `admin`-level tokens.
 
+Browser WebSocket handshakes cannot carry custom headers, so `/api/system/getLogs` also accepts the same credentials as `?token=` and `?timestamp=` query parameters (headers still take precedence when both are present). Only `admin` tokens are accepted; the timestamp is checked once at handshake time, so an accepted connection stays open past its tolerance window. Because the query string can leak into proxy and access logs, a token-carrying WebSocket URL should be treated as a secret.
+
 ### Endpoints
 
 | Endpoint | Method | Permission | Description |
@@ -300,13 +302,14 @@ Tokens idle for more than 1 hour are expired (cleaned every 10 minutes); any aut
 | `/api/settings/get` | GET | admin | `?type=global\|bot_user_config\|bot_node_config` | Returns `data: {config}`, where `config` is the selected config file's content (same layout as the JSON file). |
 | `/api/settings/set` | POST | admin | `?type=<same types>` + JSON body of partial updates, e.g. `{"system":{"debugMode":true}}` | Deep-merges the body into the selected config file, persists it, and reloads it in memory. Only the given keys change; arrays replace. |
 | `/health` | GET | None | Health check. Returns `data: {status, database}`. |
-| `/api/system/getLogs` | WebSocket | None | Streams logs. Sends the last 100 buffered entries, then live `{level, content, timestamp}` events. |
+| `/api/system/getLogs` | WebSocket | admin | Streams logs. Sends the last 100 buffered entries, then live `{level, content, timestamp}` events. Credentials via `X-Token`/`X-Timestamp` headers or `?token=`/`?timestamp=` query parameters; a failed check answers with the JSON error and no upgrade. |
 
 Middleware applied to the whole server:
 
 - **Rate limit** — token bucket, 100 requests/minute per client IP.
 - **CORS** — `Access-Control-Allow-Origin: *`, allows `Content-Type`, `X-Token`, `X-Timestamp`, `Authorization`.
 - **Security headers** — `X-XSS-Protection`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, a restrictive CSP.
+- **WebSocket auth** — `utils.WebSocketAuthMiddleware` is attached to `/api/system/getLogs` (route-level, not global): it authenticates the upgrade request and requires an `admin` token before the connection is handed to the log handler.
 
 ## Bots
 

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { getToken } from '../utils/auth.js';
 import { LOG_LEVELS } from '../utils/fmt.js';
 
 const MAX_LOGS = 1200;
@@ -38,7 +39,14 @@ const statusText = computed(() => {
 
 function wsUrl() {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${window.location.host}/api/system/getLogs`;
+    // The backend only upgrades the request for an admin token. A browser cannot
+    // set headers on a WebSocket handshake, so the credentials travel in the
+    // query string — the URL itself is therefore a secret.
+    const params = new URLSearchParams({
+        token: getToken(),
+        timestamp: String(Math.floor(Date.now() / 1000))
+    });
+    return `${proto}//${window.location.host}/api/system/getLogs?${params}`;
 }
 
 function connect() {
@@ -48,6 +56,11 @@ function connect() {
     }
     if (ws) {
         try { ws.close(); } catch { /* ignore */ }
+    }
+    // Signed out: the handshake would be rejected, so don't spin on reconnects.
+    if (!getToken()) {
+        status.value = 'closed';
+        return;
     }
     status.value = 'connecting';
 

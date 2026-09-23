@@ -6,6 +6,7 @@ import (
 
 	"nukumizu-backend/handler"
 	"nukumizu-backend/postLog"
+	"nukumizu-backend/utils"
 	"nukumizu-backend/web"
 )
 
@@ -32,11 +33,14 @@ func SetupRouter() *http.ServeMux {
 	// Health check endpoint.
 	mux.HandleFunc("/health", handler.HealthHandler)
 
-	// WebSocket log streaming endpoint.
+	// WebSocket log streaming endpoint (admin only). The middleware authenticates
+	// the upgrade request, so an anonymous or non-admin client is rejected before
+	// any log entry leaves the server.
 	logBroadcaster := postLog.GetLogBroadcaster()
 	if logBroadcaster != nil {
 		logSocketHandler := postLog.NewLogSocketHandler(logBroadcaster)
-		mux.HandleFunc("/api/system/getLogs", logSocketHandler.Handle)
+		adminOnly := utils.AuthWS("admin")
+		mux.Handle("/api/system/getLogs", adminOnly(http.HandlerFunc(logSocketHandler.Handle)))
 	}
 
 	// Static file serving for the web frontend.
