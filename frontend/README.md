@@ -58,5 +58,5 @@ frontend/
 
 ## Caveats
 
-- The backend's `/api/system/getLogs` websocket is currently unauthenticated — anyone who can reach the port can read logs. Consider gating it in a future backend change.
+- The log websocket needs an `admin` token, and a browser cannot set headers on a WebSocket handshake, so the token rides in the query string (`/api/system/getLogs?token=…&timestamp=…`). That URL is a credential: it can end up in proxy and access logs, so don't paste it into third-party tools. The view reconnects with a fresh token from `localStorage` on every attempt.
 - Registering more than one user is intentionally impossible; the backend only accepts the very first registration.
