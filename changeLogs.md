@@ -1,6 +1,12 @@
+## Ver.0.2.0.5
+### Features
+- [Enhance security of websocket log system]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/da467c9297e641e2ab9a1889252589503791b7e9")
+
+
 ## Ver.0.1.2.4-a6f3107.pre-release
 ### Bug Fixes
 - [Integrate frontend build into backend binary]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/cc4aebde6a5a4fba5eeb65ff2feccdd06dc6529d")
+
 
 ## Ver.0.1.2.3-1c4ad61.pre-release
 ### Features
