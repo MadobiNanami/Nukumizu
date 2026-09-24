@@ -322,6 +322,10 @@ Browser WebSocket handshakes cannot carry custom headers, so `/api/system/getLog
 | `/api/server/exec` | POST | bot / admin | Execute a command. Body `{uuid: [<uuid>...], command}`. Dispatches a Komari task and polls until completion (or timeout). Returns `data: {taskID, results}`. |
 | `/api/settings/get` | GET | admin | `?type=global\|bot_user_config\|bot_node_config` | Returns `data: {config}`, where `config` is the selected config file's content (same layout as the JSON file). |
 | `/api/settings/set` | POST | admin | `?type=<same types>` + JSON body of partial updates, e.g. `{"system":{"debugMode":true}}` | Deep-merges the body into the selected config file, persists it, and reloads it in memory. Only the given keys change; arrays replace. |
+| `/api/webhook/add` | POST | admin | Add an incoming webhook endpoint. Body `{name, enabled?, token?, notifyPipes?}` — only the fields given are stored, the rest start at their defaults. `409` when the name is already configured. |
+| `/api/webhook/modify` | POST | admin | Change an existing endpoint. Body `{name, ...}` — the fields given are the fields that change (same partial-update rule as `/api/settings/set`, but scoped to one endpoint). `404` for an unknown name, `400` when no other field is given. |
+| `/api/webhook/delete` | POST | admin | Remove an endpoint. Body `{name}`. `404` for an unknown name. |
+| `/api/webhook/list` | GET | admin | Every configured incoming webhook endpoint, keyed by name, under `data.endpoints`. |
 | `/health` | GET | None | Health check. Returns `data: {status, database}`. |
 | `/api/system/getLogs` | WebSocket | admin | Streams logs. Sends the last 100 buffered entries, then live `{level, content, timestamp}` events. Credentials via `X-Token`/`X-Timestamp` headers or `?token=`/`?timestamp=` query parameters; a failed check answers with the JSON error and no upgrade. |
 
@@ -340,13 +344,15 @@ A listener of its own, so external applications can be pointed at it without bei
 |---|---|---|---|
 | `/api/webhook/<name>` | POST | Endpoint token | Relay an alert to the channels the endpoint lists in `notifyPipes`. Body `{token, subject, content}`. Returns `data: {endpoint, channels}`. |
 
-Every entry under `webhook.endpoints` is one endpoint, addressed by its key as the last path segment: the key `example` is served at `POST /api/webhook/example`. An endpoint holds:
+Every entry under `webhook.endpoints` is one endpoint, addressed by its key as the last path segment: the key `example` is served at `POST /api/webhook/example`. Endpoints are managed over the admin API (`/api/webhook/add`, `modify`, `delete` and `list` — see [Endpoints](#endpoints)), which writes the same `webhook.endpoints` section of `config.json`; a newly added endpoint accepts requests as soon as the configuration is reloaded, without a restart. An endpoint holds:
 
 | Field | Meaning |
 |---|---|
 | `enabled` | Whether the endpoint accepts requests. A disabled endpoint answers `403`. |
 | `token` | Shared secret the caller sends as the `token` body field; compared in constant time. An endpoint with an empty token answers `500` instead of accepting requests from anyone. |
 | `notifyPipes` | The channels the alert is delivered to, named as in `controllerMethod`: `qq(napcat)`, `telegram`, `email`, `ntfy`, `webhook`. A channel that is unknown or disabled is skipped and reported. |
+
+The management API accepts exactly these three fields. A request naming any other field, or giving one of them the wrong type (`enabled` must be a boolean, `token` a string, `notifyPipes` an array of strings), is refused with `400` instead of being written to `config.json` — a field the program does not understand must not end up in the file. A `name` must be non-empty and free of `/`, since it becomes the last segment of the endpoint URL.
 
 The alert is rendered per channel as:
 

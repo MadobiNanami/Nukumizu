@@ -82,13 +82,20 @@ func GetSettings(settingsType string) ([]byte, error) {
 // written the matching in-memory singleton is reloaded so runtime code observes
 // the new values.
 func UpdateSettings(settingsType string, patch map[string]interface{}) error {
+	settingsLock.Lock()
+	defer settingsLock.Unlock()
+
+	return updateSettingsLocked(settingsType, patch)
+}
+
+// updateSettingsLocked is UpdateSettings without the locking, for callers that
+// need to inspect the loaded configuration and write in one critical section
+// (see the incoming webhook endpoint helpers). Callers must hold settingsLock.
+func updateSettingsLocked(settingsType string, patch map[string]interface{}) error {
 	path, err := settingsPath(settingsType)
 	if err != nil {
 		return err
 	}
-
-	settingsLock.Lock()
-	defer settingsLock.Unlock()
 
 	// Start from whatever is already on disk so nothing is dropped. A missing or
 	// empty file is treated as an empty object.
