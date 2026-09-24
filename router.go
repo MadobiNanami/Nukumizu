@@ -30,6 +30,13 @@ func SetupRouter() *http.ServeMux {
 	mux.HandleFunc("/api/settings/get", handler.SettingsGetHandler)
 	mux.HandleFunc("/api/settings/set", handler.SettingsSetHandler)
 
+	// Incoming webhook endpoint management (admin only). These configure the
+	// endpoints served by SetupWebhookRouter, which runs on its own listener.
+	mux.HandleFunc("/api/webhook/add", handler.WebhookAddHandler)
+	mux.HandleFunc("/api/webhook/modify", handler.WebhookModifyHandler)
+	mux.HandleFunc("/api/webhook/delete", handler.WebhookDeleteHandler)
+	mux.HandleFunc("/api/webhook/list", handler.WebhookListHandler)
+
 	// Health check endpoint.
 	mux.HandleFunc("/health", handler.HealthHandler)
 
@@ -62,7 +69,7 @@ func SetupWebhookRouter() *http.ServeMux {
 
 	// The wildcard segment selects the endpoint; requests for a name that is not
 	// configured fall through to the handler, which answers with a JSON 404.
-	mux.HandleFunc("/api/webhook/{name}", handler.WebhookHandler)
+	mux.HandleFunc("/api/webhook/post/{name}", handler.WebhookHandler)
 	mux.HandleFunc("/", NotFoundHandler)
 
 	postLog.Info("Webhook router setup completed")
