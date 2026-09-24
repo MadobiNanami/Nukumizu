@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"nukumizu-backend/config"
+	"nukumizu-backend/internal/controller"
 	"nukumizu-backend/internal/netproxy"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
@@ -53,6 +54,12 @@ func (w *WebhookController) IsEnabled() bool {
 	return w.cfg.Enabled
 }
 
+// IsMarkdown returns whether the channel renders Markdown, per its markdown
+// setting in config.json.
+func (w *WebhookController) IsMarkdown() bool {
+	return w.cfg.Markdown
+}
+
 // SendStatusChange sends a status change notification via Webhook.
 func (w *WebhookController) SendStatusChange(change node.StatusChange) error {
 	if !w.cfg.Enabled {
@@ -61,7 +68,7 @@ func (w *WebhookController) SendStatusChange(change node.StatusChange) error {
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromStatusChange(change)
-	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
+	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params, w.cfg.Markdown)
 
 	payload := map[string]interface{}{
 		"event":      change.Event,
@@ -82,14 +89,14 @@ func (w *WebhookController) SendServerList(onlineServers, offlineServers string)
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
-	message := template.Render(cfg.ControllerMessage.ServerList, params)
+	message := template.Render(cfg.ControllerMessage.ServerList, params, w.cfg.Markdown)
 
 	payload := map[string]interface{}{
-		"type":            "serverList",
-		"onlineServers":   params.OnlineServers,
-		"offlineServers":  params.OfflineServers,
-		"message":         message,
-		"time":            params.Time,
+		"type":           "serverList",
+		"onlineServers":  params.OnlineServers,
+		"offlineServers": params.OfflineServers,
+		"message":        message,
+		"time":           params.Time,
 	}
 
 	return w.send(payload)
@@ -103,7 +110,7 @@ func (w *WebhookController) SendExecuteResult(serverName, serverUUID, command, r
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
-	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
+	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params, w.cfg.Markdown)
 
 	payload := map[string]interface{}{
 		"type":       "executeResult",
@@ -113,6 +120,25 @@ func (w *WebhookController) SendExecuteResult(serverName, serverUUID, command, r
 		"result":     params.Result,
 		"message":    message,
 		"time":       params.Time,
+	}
+
+	return w.send(payload)
+}
+
+// SendAlert sends an alert submitted through the incoming webhook API to the
+// configured URL.
+func (w *WebhookController) SendAlert(alert controller.Alert) error {
+	if !w.cfg.Enabled {
+		return nil
+	}
+
+	payload := map[string]interface{}{
+		"type":    "alert",
+		"subject": alert.Subject,
+		"source":  alert.Source,
+		"content": alert.Content,
+		"message": alert.Render(w.cfg.Markdown),
+		"time":    alert.Time,
 	}
 
 	return w.send(payload)

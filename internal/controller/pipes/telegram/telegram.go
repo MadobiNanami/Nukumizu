@@ -124,6 +124,12 @@ func (t *TelegramController) IsEnabled() bool {
 	return t.cfg.Enabled
 }
 
+// IsMarkdown returns whether the channel renders Markdown, per its markdown
+// setting in config.json.
+func (t *TelegramController) IsMarkdown() bool {
+	return t.cfg.Markdown
+}
+
 // handleUpdate processes a single Telegram update received via long polling. It
 // is installed as the framework's default handler (every update with a Message
 // reaches it). Updates are processed sequentially because the bot is created
@@ -271,7 +277,7 @@ func (t *TelegramController) SendStatusChange(change node.StatusChange) error {
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromStatusChange(change)
-	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
+	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params, t.cfg.Markdown)
 
 	// Only notify trusted groups and admins whose event_status_notify is true.
 	if uc := config.C_botUserConfig; uc != nil {
@@ -299,7 +305,7 @@ func (t *TelegramController) SendServerList(onlineServers, offlineServers string
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
-	message := template.Render(cfg.ControllerMessage.ServerList, params)
+	message := template.Render(cfg.ControllerMessage.ServerList, params, t.cfg.Markdown)
 
 	t.sendToGroups(message)
 	return nil
@@ -313,10 +319,24 @@ func (t *TelegramController) SendExecuteResult(serverName, serverUUID, command, 
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
-	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
+	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params, t.cfg.Markdown)
 
 	t.sendToGroups(message)
 	return nil
+}
+
+// SendAlert sends an alert submitted through the incoming webhook API to all
+// Telegram trusted groups and admins.
+func (t *TelegramController) SendAlert(alert controller.Alert) error {
+	if !t.cfg.Enabled || t.client == nil {
+		return nil
+	}
+
+	return t.SendMessage(controller.Message{
+		Source:  t.Name(),
+		Content: alert.Render(t.cfg.Markdown),
+		Type:    controller.MessageTypeAlert,
+	})
 }
 
 // telegramChatType maps a Telegram chat type to the unified ChatType value used

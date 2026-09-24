@@ -14,11 +14,13 @@ import (
 const maxMessageLen = 4000
 
 // sendMessage sends a text message to a chat, splitting it into chunks that fit
-// Telegram's 4096-character limit. All messages are sent with
-// parse_mode=Markdown so fenced code blocks and inline formatting render as
-// rich text. Templates must stay valid under Telegram's legacy Markdown:
-// unpaired '*' or '_' characters (e.g. a lone '*Event: ...' label) make the
-// API reject the whole message.
+// Telegram's 4096-character limit. When the channel has markdown enabled the
+// message is sent with parse_mode=Markdown so fenced code blocks and inline
+// formatting render as rich text; templates must then stay valid under
+// Telegram's legacy Markdown, because unpaired '*' or '_' characters (e.g. a
+// lone '*Event: ...' label) make the API reject the whole message. With
+// markdown disabled the message is sent without a parse mode, so it is
+// delivered verbatim whatever it contains.
 func (t *TelegramController) sendMessage(message controller.Message) error {
 	if t.client == nil {
 		return nil
@@ -40,11 +42,15 @@ func (t *TelegramController) sendMessageChunk(chatID int64, text string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
 	defer cancel()
 
-	_, err := t.client.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:    chatID,
-		Text:      text,
-		ParseMode: models.ParseModeMarkdownV1, // Telegram legacy Markdown
-	})
+	params := &bot.SendMessageParams{
+		ChatID: chatID,
+		Text:   text,
+	}
+	if t.cfg.Markdown {
+		params.ParseMode = models.ParseModeMarkdownV1 // Telegram legacy Markdown
+	}
+
+	_, err := t.client.SendMessage(ctx, params)
 	return err
 }
 

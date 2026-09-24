@@ -50,6 +50,25 @@ func SetupRouter() *http.ServeMux {
 	return mux
 }
 
+// SetupWebhookRouter registers the routes of the incoming webhook API. Unlike
+// SetupRouter it is served on its own listener (webhook.listenAddr/listenPort),
+// so external applications can be given access to the webhook port without
+// reaching the admin API. Every endpoint configured under webhook.endpoints is
+// reachable as /api/webhook/<name>.
+func SetupWebhookRouter() *http.ServeMux {
+	postLog.Info("Setting up webhook routers...")
+
+	mux := http.NewServeMux()
+
+	// The wildcard segment selects the endpoint; requests for a name that is not
+	// configured fall through to the handler, which answers with a JSON 404.
+	mux.HandleFunc("/api/webhook/{name}", handler.WebhookHandler)
+	mux.HandleFunc("/", NotFoundHandler)
+
+	postLog.Info("Webhook router setup completed")
+	return mux
+}
+
 // NotFoundHandler returns a 404 JSON response for unknown routes.
 func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 	postLog.Debug(fmt.Sprintf("Unknown request: %s %s", r.Method, r.URL.Path))

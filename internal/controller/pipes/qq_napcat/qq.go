@@ -86,6 +86,12 @@ func (q *QQController) IsEnabled() bool {
 	return q.cfg.Enabled
 }
 
+// IsMarkdown returns whether the channel renders Markdown, per its markdown
+// setting in config.json.
+func (q *QQController) IsMarkdown() bool {
+	return q.cfg.Markdown
+}
+
 // handleNapcatEvent processes a raw OneBot event received from the NapCat WebSocket.
 func (q *QQController) handleNapcatEvent(raw []byte) {
 	var ev oneBotEvent
@@ -179,7 +185,7 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 	parsed.ChatID = cmd.ChatID
 	parsed.ChatType = cmd.ChatType
 	parsed.SenderID = cmd.SenderID
-	parsed.Source = "qq_napcat"
+	parsed.Source = q.Name()
 
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
@@ -256,7 +262,7 @@ func (q *QQController) SendStatusChange(change node.StatusChange) error {
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromStatusChange(change)
-	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
+	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params, q.cfg.Markdown)
 
 	// Only notify trusted groups and admins whose event_status_notify is true.
 	if uc := config.C_botUserConfig; uc != nil {
@@ -285,7 +291,7 @@ func (q *QQController) SendServerList(onlineServers, offlineServers string) erro
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
-	message := template.Render(cfg.ControllerMessage.ServerList, params)
+	message := template.Render(cfg.ControllerMessage.ServerList, params, q.cfg.Markdown)
 
 	for _, groupID := range q.trustedGroupIDs() {
 		q.sendGroupMessage(groupID, message)
@@ -301,12 +307,26 @@ func (q *QQController) SendExecuteResult(serverName, serverUUID, command, result
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
-	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
+	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params, q.cfg.Markdown)
 
 	for _, groupID := range q.trustedGroupIDs() {
 		q.sendGroupMessage(groupID, message)
 	}
 	return nil
+}
+
+// SendAlert sends an alert submitted through the incoming webhook API to all QQ
+// trusted groups and admins.
+func (q *QQController) SendAlert(alert controller.Alert) error {
+	if !q.cfg.Enabled {
+		return nil
+	}
+
+	return q.SendMessage(controller.Message{
+		Source:  q.Name(),
+		Content: alert.Render(q.cfg.Markdown),
+		Type:    controller.MessageTypeAlert,
+	})
 }
 
 func (q *QQController) sendGroupMessage(groupID string, message string) {

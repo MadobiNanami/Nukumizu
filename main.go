@@ -146,6 +146,9 @@ func main() {
 		}
 	}()
 
+	// --- Start the incoming webhook listener ---
+	startWebhookServer(cfg)
+
 	// --- Graceful shutdown ---
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -165,6 +168,35 @@ func main() {
 	}
 
 	postLog.Info("Server stopped")
+}
+
+// startWebhookServer serves the incoming webhook API on its own listener. The
+// API is not exposed on the main listener: external applications post alerts to
+// this port only, so its rate limiter and CORS policy are configured
+// independently. A failure to bind it is logged rather than fatal — the rest of
+// the program (bots, status monitoring) keeps running without it.
+func startWebhookServer(cfg *config.Config) {
+	if !cfg.Webhook.Enabled {
+		postLog.Warning("Incoming webhook API is disabled")
+		return
+	}
+
+	handler := utils.RateLimitMiddleware(SetupWebhookRouter())
+	handler = utils.CORSMiddleware(handler)
+
+	addr := fmt.Sprintf("%s:%s", cfg.Webhook.ListenAddr, cfg.Webhook.ListenPort)
+	postLog.Info(fmt.Sprintf("Webhook API listening on %s", addr))
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				postLog.Error(fmt.Sprintf("Webhook server panic: %v", r))
+			}
+		}()
+		if err := http.ListenAndServe(addr, handler); err != nil {
+			postLog.Error("Webhook server error: " + err.Error())
+		}
+	}()
 }
 
 // initControllers initializes and starts all configured controllers.
