@@ -32,6 +32,12 @@ const routes = [
                 meta: { title: 'Settings' }
             },
             {
+                path: 'webhooks',
+                name: 'WebHooks',
+                component: () => import('../views/WebHooks.vue'),
+                meta: { title: 'WebHooks' }
+            },
+            {
                 path: 'logs',
                 name: 'Logs',
                 component: () => import('../views/Logs.vue'),
