@@ -19,3 +19,16 @@ export const settingsApi = {
     get: (type) => http.get(`/settings/get?type=${encodeURIComponent(type)}`),
     set: (type, patch) => http.post(`/settings/set?type=${encodeURIComponent(type)}`, patch)
 };
+
+// Incoming webhook endpoints (admin). They live in the `webhook.endpoints`
+// section of config.json, but are managed here rather than through the settings
+// API because they are a keyed collection: add/modify take one endpoint object
+// and change only the fields they carry, and a new endpoint is rejected with
+// 409 when its name is taken.
+// list → { success, message, data: { endpoints: { "<name>": { enabled, token, notifyPipes } } } }.
+export const webhookApi = {
+    list: () => http.get('/webhook/list'),
+    add: (endpoint) => http.post('/webhook/add', endpoint),
+    modify: (endpoint) => http.post('/webhook/modify', endpoint),
+    remove: (name) => http.post('/webhook/delete', { name })
+};

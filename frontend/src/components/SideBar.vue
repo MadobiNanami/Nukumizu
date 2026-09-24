@@ -11,6 +11,7 @@ const groups = [
         label: 'System',
         items: [
             { name: 'Settings', to: '/settings', title: 'Settings', icon: 'fa-sliders' },
+            { name: 'WebHooks', to: '/webhooks', title: 'WebHooks', icon: 'fa-satellite-dish' },
             { name: 'Logs', to: '/logs', title: 'Logs', icon: 'fa-terminal' }
         ]
     }

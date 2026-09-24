@@ -11,12 +11,12 @@ Nukumizu connects to a Komari Dashboard instance, keeps an in-memory view of eve
 - **Remote command execution** — dispatches commands through the Komari task API and polls the result (1s interval, up to 60s timeout).
 - **Interactive bots** — QQ (NapCat / OneBot 11) and Telegram bots for `/list`, `/status`, `/info`, `/run`, `/shutdown`, `/reboot`, and more, protected by an admin / trusted-group permission model.
 - **Notification channels** — server status changes are pushed to every enabled channel: QQ, Telegram, Email (SMTP), [ntfy](https://ntfy.sh), and Webhook.
-- **Incoming webhook API** — external applications can push their own alerts in via `POST /api/webhook/<name>`, and Nukumizu relays them to the channels that endpoint lists. Each endpoint carries its own token and target channels, and the API is served on a **separate listener** so it can be exposed without exposing the admin API.
+- **Incoming webhook API** — external applications can push their own alerts in via `POST /api/webhook/post/<name>`, and Nukumizu relays them to the channels that endpoint lists. Each endpoint carries its own token and target channels, and the API is served on a **separate listener** so it can be exposed without exposing the admin API.
 - **Network proxy** — a global proxy URL can be enabled per controller (`networkUseProxy`) for HTTP, WebSocket, and even SMTP (HTTP CONNECT tunnel).
 - **Customizable message templates** — every bot/notification message is rendered from a template in `config.json`, with Markdown formatting switched on per channel.
 - **Storage** — SQLite (pure-Go driver) for `user.db` and `log.db`; safe on network shares (WAL disabled).
 - **Dashboard API** — token-authenticated REST API plus an admin-only live log-streaming WebSocket.
-- **Web console** — a Vue 3 admin UI for browsing nodes, editing `config.json`, managing bot trust, and tailing logs. The built bundle is embedded in the binary, so a single executable serves both the API and the console.
+- **Web console** — a Vue 3 admin UI for browsing nodes, editing `config.json`, managing bot trust and webhook endpoints, and tailing logs. The built bundle is embedded in the binary, so a single executable serves both the API and the console.
 
 ## How it works
 
@@ -41,7 +41,8 @@ nukumizu-backend/
 │   ├── user.go                   # /api/user/login, /api/user/register
 │   ├── server.go                 # /api/server/list, getInfo, getStatus, exec
 │   ├── settings.go               # /api/settings/get, set
-│   ├── webhook.go                # /api/webhook/{name} (incoming webhook API)
+│   ├── webhook.go                # /api/webhook/post/{name} (incoming webhook API)
+│   ├── webhook_endpoints.go      # /api/webhook/add, modify, delete, list
 │   └── health.go                 # /health
 ├── database/
 │   └── user.go                   # user.db (SQLite) user store
@@ -91,8 +92,8 @@ nukumizu-backend/
         ├── api/index.js          # Wrappers around the REST endpoints
         ├── router/index.js       # Routes and the login guard
         ├── utils/                # http/auth/theme/toast/format/runtime helpers
-        ├── components/           # Modal, Toggle, editors, top bar, side bar
-        └── views/                # Login, Overview, Trusted, Settings, Logs
+        ├── components/           # Modal, Toggle, editors, ConfigSection, top bar, side bar
+        └── views/                # Login, Overview, Trusted, Settings, WebHooks, Logs
 ```
 
 ## Requirements
@@ -340,11 +341,13 @@ Middleware applied to the whole server:
 
 A listener of its own, so external applications can be pointed at it without being able to reach the admin API. It is switched on with `webhook.enabled` and binds `webhook.listenAddr:webhook.listenPort` (default `0.0.0.0:8081`); that half of the configuration is applied at startup, while `webhook.endpoints` is re-read whenever the config is reloaded. Only the rate limit and CORS middleware apply here — no session token is involved.
 
+The console's **WebHooks** page manages the listener settings and the endpoints. The outgoing WebHook notification channel (`controllerMethod.webhook`) stays on the Settings page with the other notification channels, since it is one of them.
+
 | Endpoint | Method | Permission | Description |
 |---|---|---|---|
-| `/api/webhook/<name>` | POST | Endpoint token | Relay an alert to the channels the endpoint lists in `notifyPipes`. Body `{token, subject, content}`. Returns `data: {endpoint, channels}`. |
+| `/api/webhook/post/<name>` | POST | Endpoint token | Relay an alert to the channels the endpoint lists in `notifyPipes`. Body `{token, subject, content}`. Returns `data: {endpoint, channels}`. |
 
-Every entry under `webhook.endpoints` is one endpoint, addressed by its key as the last path segment: the key `example` is served at `POST /api/webhook/example`. Endpoints are managed over the admin API (`/api/webhook/add`, `modify`, `delete` and `list` — see [Endpoints](#endpoints)), which writes the same `webhook.endpoints` section of `config.json`; a newly added endpoint accepts requests as soon as the configuration is reloaded, without a restart. An endpoint holds:
+Every entry under `webhook.endpoints` is one endpoint, addressed by its key as the last path segment: the key `example` is served at `POST /api/webhook/post/example`. The `post/` segment keeps the endpoints' own namespace separate from the management routes (`/api/webhook/add` and friends), which live on the admin listener. Endpoints are managed over the admin API (`/api/webhook/add`, `modify`, `delete` and `list` — see [Endpoints](#endpoints)), which writes the same `webhook.endpoints` section of `config.json`; a newly added endpoint accepts requests as soon as the configuration is reloaded, without a restart. An endpoint holds:
 
 | Field | Meaning |
 |---|---|
