@@ -43,10 +43,10 @@ func (m *Manager) Trigger(cmd Command, trustedGroups, admins []string, listenMet
 // RouteCommand processes a parsed bot command and returns the response text.
 // The actual command execution for every pipe is unified here.
 func (m *Manager) RouteCommand(cmd Command) (string, error) {
-	if cmd.Source == "telegram"{
+	if cmd.Source == "telegram" {
 		switch cmd.Command {
 		case "start":
-			return telegram_handleStart()
+			return telegram_handleStart(cmd)
 		}
 	}
 	switch cmd.Command {

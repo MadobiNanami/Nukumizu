@@ -63,7 +63,7 @@ func ServerListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := template.BuildParamsFromServerList()
-	result := template.Render("", params)
+	result := template.Render("", params, false)
 
 	utils.SendSuccessResponse(w, "", map[string]interface{}{
 		"list": result,

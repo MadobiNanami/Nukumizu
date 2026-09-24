@@ -10,16 +10,27 @@ import (
 	"nukumizu-backend/internal/template"
 )
 
+// commandMarkdown reports whether responses to the given command are rendered
+// with Markdown, per the markdown setting of the pipe the command came from
+// (see Command.Source).
+func commandMarkdown(cmd Command) bool {
+	mgr := GetManager()
+	if mgr == nil {
+		return false
+	}
+	return mgr.IsMarkdown(cmd.Source)
+}
+
 func handleHelp(cmd Command) (string, error) {
 	cfg := config.C_globalConfig
 	params := template.BuildBotInitializationMsgParams()
-	return template.Render(cfg.ControllerMessage.BotHelp, params, cmd.Source), nil
+	return template.Render(cfg.ControllerMessage.BotHelp, params, commandMarkdown(cmd)), nil
 }
 
 func handleList(cmd Command) (string, error) {
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
-	return template.Render(cfg.ControllerMessage.ServerList, params, cmd.Source), nil
+	return template.Render(cfg.ControllerMessage.ServerList, params, commandMarkdown(cmd)), nil
 }
 
 func handleStatus(cmd Command) (string, error) {
@@ -130,7 +141,7 @@ func handleRun(cmd Command) (string, error) {
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(uuidArg, uuidArg, command, formatTaskResults(results))
-	return template.Render(cfg.ControllerMessage.ServerExecuteResult, params, cmd.Source), nil
+	return template.Render(cfg.ControllerMessage.ServerExecuteResult, params, commandMarkdown(cmd)), nil
 }
 
 func handleInfo(cmd Command) (string, error) {
@@ -177,10 +188,10 @@ func handleInfo(cmd Command) (string, error) {
 	return sb.String(), nil
 }
 
-func telegram_handleStart() (string, error) {
+func telegram_handleStart(cmd Command) (string, error) {
 	cfg := config.C_globalConfig
 	params := template.BuildBotInitializationMsgParams()
-	return template.Render(cfg.ControllerMessage.Tg_BotStart, params, "telegram"), nil
+	return template.Render(cfg.ControllerMessage.Tg_BotStart, params, commandMarkdown(cmd)), nil
 }
 
 func handleGetIP(cmd Command) (string, error) {

@@ -6,6 +6,7 @@ import (
 	gomail "gopkg.in/mail.v2"
 
 	"nukumizu-backend/config"
+	"nukumizu-backend/internal/controller"
 	"nukumizu-backend/internal/netproxy"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
@@ -54,6 +55,12 @@ func (e *EmailController) IsEnabled() bool {
 	return e.cfg.Enabled
 }
 
+// IsMarkdown returns whether the channel renders Markdown, per its markdown
+// setting in config.json.
+func (e *EmailController) IsMarkdown() bool {
+	return e.cfg.Markdown
+}
+
 // SendStatusChange sends a status change notification via Email.
 func (e *EmailController) SendStatusChange(change node.StatusChange) error {
 	if !e.cfg.Enabled {
@@ -66,7 +73,7 @@ func (e *EmailController) SendStatusChange(change node.StatusChange) error {
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromStatusChange(change)
-	body := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
+	body := template.Render(cfg.ControllerMessage.ServerStatusChanged, params, e.cfg.Markdown)
 
 	subject := fmt.Sprintf("Server Status Change: %s - %s", change.Name, change.Event)
 	return e.sendEmail(subject, body)
@@ -80,7 +87,7 @@ func (e *EmailController) SendServerList(onlineServers, offlineServers string) e
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
-	body := template.Render(cfg.ControllerMessage.ServerList, params)
+	body := template.Render(cfg.ControllerMessage.ServerList, params, e.cfg.Markdown)
 
 	return e.sendEmail("Server List", body)
 }
@@ -93,10 +100,24 @@ func (e *EmailController) SendExecuteResult(serverName, serverUUID, command, res
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
-	body := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
+	body := template.Render(cfg.ControllerMessage.ServerExecuteResult, params, e.cfg.Markdown)
 
 	subject := fmt.Sprintf("Command Result: %s on %s", command, serverName)
 	return e.sendEmail(subject, body)
+}
+
+// SendAlert sends an alert submitted through the incoming webhook API to the
+// configured recipients.
+func (e *EmailController) SendAlert(alert controller.Alert) error {
+	if !e.cfg.Enabled {
+		return nil
+	}
+	if len(e.cfg.To) == 0 {
+		postLog.Debug("Email controller has no recipients configured")
+		return nil
+	}
+
+	return e.sendEmail(alert.Subject, alert.Render(e.cfg.Markdown))
 }
 
 func (e *EmailController) sendEmail(subject, body string) error {

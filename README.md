@@ -11,8 +11,9 @@ Nukumizu connects to a Komari Dashboard instance, keeps an in-memory view of eve
 - **Remote command execution** — dispatches commands through the Komari task API and polls the result (1s interval, up to 60s timeout).
 - **Interactive bots** — QQ (NapCat / OneBot 11) and Telegram bots for `/list`, `/status`, `/info`, `/run`, `/shutdown`, `/reboot`, and more, protected by an admin / trusted-group permission model.
 - **Notification channels** — server status changes are pushed to every enabled channel: QQ, Telegram, Email (SMTP), [ntfy](https://ntfy.sh), and Webhook.
+- **Incoming webhook API** — external applications can push their own alerts in via `POST /api/webhook/<name>`, and Nukumizu relays them to the channels that endpoint lists. Each endpoint carries its own token and target channels, and the API is served on a **separate listener** so it can be exposed without exposing the admin API.
 - **Network proxy** — a global proxy URL can be enabled per controller (`networkUseProxy`) for HTTP, WebSocket, and even SMTP (HTTP CONNECT tunnel).
-- **Customizable message templates** — every bot/notification message is rendered from a template in `config.json`.
+- **Customizable message templates** — every bot/notification message is rendered from a template in `config.json`, with Markdown formatting switched on per channel.
 - **Storage** — SQLite (pure-Go driver) for `user.db` and `log.db`; safe on network shares (WAL disabled).
 - **Dashboard API** — token-authenticated REST API plus an admin-only live log-streaming WebSocket.
 - **Web console** — a Vue 3 admin UI for browsing nodes, editing `config.json`, managing bot trust, and tailing logs. The built bundle is embedded in the binary, so a single executable serves both the API and the console.
@@ -30,7 +31,7 @@ Nukumizu connects to a Komari Dashboard instance, keeps an in-memory view of eve
 ```
 nukumizu-backend/
 ├── main.go                       # Entry point, startup sequence, graceful shutdown
-├── router.go                     # HTTP route registration
+├── router.go                     # HTTP route registration (main + webhook API)
 ├── config/
 │   ├── config.go                 # Load config files, apply defaults
 │   └── variables.go              # Config schema structs + globals
@@ -40,6 +41,7 @@ nukumizu-backend/
 │   ├── user.go                   # /api/user/login, /api/user/register
 │   ├── server.go                 # /api/server/list, getInfo, getStatus, exec
 │   ├── settings.go               # /api/settings/get, set
+│   ├── webhook.go                # /api/webhook/{name} (incoming webhook API)
 │   └── health.go                 # /health
 ├── database/
 │   └── user.go                   # user.db (SQLite) user store
@@ -66,14 +68,14 @@ nukumizu-backend/
 │   ├── template/
 │   │   └── template.go           # Message template renderer ({{ variables }})
 │   └── controller/
-│       ├── controller.go         # Manager, Controller / BotController interfaces
+│       ├── controller.go         # Manager, Controller / BotController interfaces, alerts
 │       ├── trigger.go            # Command parsing, authorization, routing
 │       ├── processor.go          # Command handlers
 │       ├── utils.go
 │       └── pipes/
 │           ├── email.go          # Email notification pipe
 │           ├── ntfy.go           # ntfy notification pipe
-│           ├── webhook.go        # Webhook notification pipe
+│           ├── webhook.go        # Outgoing webhook notification pipe
 │           ├── qq_napcat/
 │           │   ├── qq.go         # QQ (NapCat / OneBot 11) bot controller
 │           │   └── napcat.go     # NapCat WebSocket + HTTP API client
@@ -139,9 +141,22 @@ There are two configuration files, both read from the working directory unless o
             "password": "CHANGE_ME"
         }
     },
+    "webhook": {
+        "enabled": false,
+        "listenAddr": "0.0.0.0",
+        "listenPort": "8081",
+        "endpoints": {
+            "example": {
+                "enabled": true,
+                "token": "CHANGE_ME",
+                "notifyPipes": ["qq(napcat)", "telegram", "email", "ntfy"]
+            }
+        }
+    },
     "controllerMethod": {
         "qq(napcat)": {
             "enabled": false,
+            "markdown": false,
             "networkUseProxy": false,
             "napcatAddr": "127.0.0.1",
             "napcatPort": "3000",
@@ -151,12 +166,14 @@ There are two configuration files, both read from the working directory unless o
         },
         "telegram": {
             "enabled": false,
+            "markdown": true,
             "networkUseProxy": false,
             "botToken": "",
             "listenMethod": "global"
         },
         "email": {
             "enabled": false,
+            "markdown": false,
             "networkUseProxy": false,
             "smtpHost": "",
             "smtpPort": 587,
@@ -168,6 +185,7 @@ There are two configuration files, both read from the working directory unless o
         },
         "ntfy": {
             "enabled": false,
+            "markdown": false,
             "networkUseProxy": false,
             "server": "https://ntfy.sh",
             "topic": "",
@@ -176,6 +194,7 @@ There are two configuration files, both read from the working directory unless o
         },
         "webhook": {
             "enabled": false,
+            "markdown": false,
             "networkUseProxy": false,
             "url": "",
             "method": "POST",
@@ -199,11 +218,13 @@ There are two configuration files, both read from the working directory unless o
 Field notes:
 
 - `system.networkProxy` is a **system-wide** proxy URL. A controller only uses it when its own `networkUseProxy` is `true`. Applied to Telegram HTTP polling, NapCat HTTP/WebSocket, ntfy and webhook requests, and Email SMTP (tunneled via HTTP CONNECT).
+- `webhook` configures the **incoming** webhook API (see [Incoming webhook API](#incoming-webhook-api)); `controllerMethod.webhook` configures the outgoing webhook notification channel. They are independent.
+- `markdown` is a per-channel switch on all five channels. With it `false` (the default) every rendered value is inserted as plain text; with it `true` the values meant to be read verbatim (UUIDs, event messages, commands, command results, alert source and alert content) are wrapped in Markdown code spans / fenced blocks. Nothing is inferred from the channel name, so a channel only ever gets the formatting you asked for — turn it off for a channel whose platform does not render Markdown. On Telegram it also picks the `parse_mode`: with `markdown` off, messages are sent without one, so text containing `*` or `_` is delivered as-is rather than rejected by the API as malformed Markdown.
 - `controllerMethod.qq(napcat).listenMethod` / `telegram.listenMethod` — see [Bot recognition modes](#bot-recognition-modes).
 - `debug` toggles verbose per-channel message/action logging; these only matter in debug builds / `debugMode`.
 - `email.useTLS` is kept for configuration compatibility.
 - `dataPath` / `dbPath` default to `./data` and `./db`; `user.db` and `log.db` are created under `dbPath`.
-- Missing keys fall back to built-in defaults (host `0.0.0.0`, port `8080`, NapCat `127.0.0.1:3000`, ntfy server `https://ntfy.sh`, webhook method `POST`, etc.). Message templates have built-in fallbacks too.
+- Missing keys fall back to built-in defaults (host `0.0.0.0`, port `8080`, webhook API `0.0.0.0:8081`, no webhook endpoints, NapCat `127.0.0.1:3000`, ntfy server `https://ntfy.sh`, webhook method `POST`, etc.). Message templates have built-in fallbacks too. `markdown` defaults to `false`, so add it explicitly for Telegram (see the sample above) to keep its formatting.
 
 ### `bot_user_config.json`
 
@@ -256,7 +277,7 @@ Admins and trusted groups are defined **per bot channel** and map a member ID to
 
 ### Message templates
 
-`controllerMessage` templates are rendered before sending. Available variables (rendered through the Telegram pipe are additionally wrapped in Telegram legacy Markdown):
+`controllerMessage` templates are rendered before sending. Available variables (channels with `markdown: true` additionally wrap the verbatim values in Markdown — see the field notes above):
 
 | Variable | Meaning |
 |---|---|
@@ -311,6 +332,38 @@ Middleware applied to the whole server:
 - **Security headers** — `X-XSS-Protection`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, a restrictive CSP.
 - **WebSocket auth** — `utils.WebSocketAuthMiddleware` is attached to `/api/system/getLogs` (route-level, not global): it authenticates the upgrade request and requires an `admin` token before the connection is handed to the log handler.
 
+### Incoming webhook API
+
+A listener of its own, so external applications can be pointed at it without being able to reach the admin API. It is switched on with `webhook.enabled` and binds `webhook.listenAddr:webhook.listenPort` (default `0.0.0.0:8081`); that half of the configuration is applied at startup, while `webhook.endpoints` is re-read whenever the config is reloaded. Only the rate limit and CORS middleware apply here — no session token is involved.
+
+| Endpoint | Method | Permission | Description |
+|---|---|---|---|
+| `/api/webhook/<name>` | POST | Endpoint token | Relay an alert to the channels the endpoint lists in `notifyPipes`. Body `{token, subject, content}`. Returns `data: {endpoint, channels}`. |
+
+Every entry under `webhook.endpoints` is one endpoint, addressed by its key as the last path segment: the key `example` is served at `POST /api/webhook/example`. An endpoint holds:
+
+| Field | Meaning |
+|---|---|
+| `enabled` | Whether the endpoint accepts requests. A disabled endpoint answers `403`. |
+| `token` | Shared secret the caller sends as the `token` body field; compared in constant time. An endpoint with an empty token answers `500` instead of accepting requests from anyone. |
+| `notifyPipes` | The channels the alert is delivered to, named as in `controllerMethod`: `qq(napcat)`, `telegram`, `email`, `ntfy`, `webhook`. A channel that is unknown or disabled is skipped and reported. |
+
+The alert is rendered per channel as:
+
+```
+{{ subject }}
+- Source: {{ source }}
+- Content:
+{{ content }}
+
+- Time: {{ time }}
+Sent by Nukumizu Alert System
+```
+
+`{{ source }}` is the endpoint name, so recipients can tell which application triggered the alert. On a channel with `markdown: true` the source is wrapped in inline code and the content in a fenced code block; `{{ subject }}` and `{{ time }}` stay plain.
+
+Status codes: `200` delivered, `400` malformed body or empty `subject`/`content`, `401` wrong token, `403` endpoint disabled, `404` unknown endpoint name, `405` non-POST request, `500` endpoint has no token configured, `502` no channel accepted the alert.
+
 ## Bots
 
 QQ (NapCat) and Telegram bots share one command engine and authorization pipeline, implemented in `internal/controller/`. NapCat speaks OneBot 11 (WebSocket event stream + HTTP actions); Telegram uses `go-telegram/bot` long polling.
@@ -343,6 +396,8 @@ QQ (NapCat) and Telegram bots share one command engine and authorization pipelin
 ## Notification channels
 
 QQ and Telegram are *interactive* channels. Email, ntfy, and webhook are **status-only** channels — they receive server status-change alerts but cannot run commands. On startup, the welcome message and initial server list are delivered only to the bot channels (QQ / Telegram), honoring each member's `event_bot_started` preference.
+
+All five channels can also carry an alert submitted by an external application through the [incoming webhook API](#incoming-webhook-api). A bot channel delivers it to the groups and admins configured for that channel; a status-only channel delivers it to its configured destination (mail recipients, ntfy topic, outgoing webhook URL). Markdown formatting is decided per channel by its `markdown` setting, never by the channel's name.
 
 ## Building
 

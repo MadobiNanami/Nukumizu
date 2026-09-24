@@ -107,6 +107,17 @@ func LoadGlobalConfig(configPath string) (*Config, error) {
 		cfg.ControllerMethod.Webhook.Headers = map[string]string{}
 	}
 
+	// Apply defaults for the incoming webhook API.
+	if cfg.Webhook.ListenAddr == "" {
+		cfg.Webhook.ListenAddr = "0.0.0.0"
+	}
+	if cfg.Webhook.ListenPort == "" {
+		cfg.Webhook.ListenPort = "8081"
+	}
+	if cfg.Webhook.Endpoints == nil {
+		cfg.Webhook.Endpoints = map[string]WebhookEndpointConfig{}
+	}
+
 	// Apply defaults for paths.
 	if cfg.DataPath == "" {
 		cfg.DataPath = "./data"

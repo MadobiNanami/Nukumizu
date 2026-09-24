@@ -34,6 +34,7 @@ type KomariConfig struct {
 
 // QQConfig holds QQ (Napcat) Bot controller configuration.
 type QQConfig struct {
+	Markdown     	bool   `json:"markdown"`
 	Enabled         bool   `json:"enabled"`
 	NetworkUseProxy bool   `json:"networkUseProxy"`
 	NapcatAddr      string `json:"napcatAddr"`
@@ -45,6 +46,7 @@ type QQConfig struct {
 
 // TelegramConfig holds Telegram Bot controller configuration.
 type TelegramConfig struct {
+	Markdown     	bool   `json:"markdown"`
 	Enabled         bool   `json:"enabled"`
 	NetworkUseProxy bool   `json:"networkUseProxy"`
 	BotToken        string `json:"botToken"`
@@ -53,6 +55,7 @@ type TelegramConfig struct {
 
 // EmailConfig holds Email notification controller configuration.
 type EmailConfig struct {
+	Markdown     	bool   `json:"markdown"`
 	Enabled         bool     `json:"enabled"`
 	NetworkUseProxy bool     `json:"networkUseProxy"`
 	SMTPHost        string   `json:"smtpHost"`
@@ -66,6 +69,7 @@ type EmailConfig struct {
 
 // NtfyConfig holds Ntfy notification controller configuration.
 type NtfyConfig struct {
+	Markdown     	bool   `json:"markdown"`
 	Enabled         bool   `json:"enabled"`
 	NetworkUseProxy bool   `json:"networkUseProxy"`
 	Server          string `json:"server"`
@@ -74,8 +78,11 @@ type NtfyConfig struct {
 	Priority        string `json:"priority"`
 }
 
-// WebhookConfig holds Webhook notification controller configuration.
+// WebhookConfig holds the outgoing Webhook notification controller
+// configuration. It is the counterpart of WebhookReceiverConfig, which serves
+// the incoming webhook API.
 type WebhookConfig struct {
+	Markdown     	bool  			  `json:"markdown"`
 	Enabled         bool              `json:"enabled"`
 	NetworkUseProxy bool              `json:"networkUseProxy"`
 	URL             string            `json:"url"`
@@ -93,6 +100,49 @@ type ControllerMethodConfig struct {
 	Webhook  WebhookConfig  `json:"webhook"`
 }
 
+// WebhookEndpointConfig holds a single incoming webhook endpoint. Endpoints are
+// keyed by name under webhook.endpoints; the name is the last path segment of
+// the endpoint's URL, so an endpoint named "example" is served at
+// POST /api/webhook/example. One endpoint per external application and target
+// channel group keeps their tokens and recipients apart.
+type WebhookEndpointConfig struct {
+	// Enabled controls whether the endpoint accepts requests. A disabled
+	// endpoint answers with 403.
+	Enabled bool `json:"enabled"`
+
+	// Token is the shared secret the caller must send in the request body. An
+	// endpoint without a token is rejected: an empty token would make the
+	// endpoint an open relay, so it is treated as a configuration error.
+	Token string `json:"token"`
+
+	// NotifyPipes lists the notification channels the alert is delivered to, by
+	// controller name (e.g. "qq(napcat)", "telegram", "email", "ntfy",
+	// "webhook").
+	NotifyPipes []string `json:"notifyPipes"`
+}
+
+// WebhookReceiverConfig holds the incoming webhook API settings. The API is
+// served on its own listener instead of the main one, so external applications
+// can be given access to the webhook port without exposing the admin API. Only
+// the endpoints map is re-read on a settings update; enabled, listenAddr and
+// listenPort are applied at startup.
+type WebhookReceiverConfig struct {
+	Enabled    bool                             `json:"enabled"`
+	ListenAddr string                           `json:"listenAddr"`
+	ListenPort string                           `json:"listenPort"`
+	Endpoints  map[string]WebhookEndpointConfig `json:"endpoints"`
+}
+
+// GetWebhookEndpoint returns the incoming webhook endpoint registered under the
+// given name, and whether such an endpoint exists.
+func GetWebhookEndpoint(name string) (WebhookEndpointConfig, bool) {
+	if C_globalConfig == nil {
+		return WebhookEndpointConfig{}, false
+	}
+	endpoint, ok := C_globalConfig.Webhook.Endpoints[name]
+	return endpoint, ok
+}
+
 // ControllerMessageConfig holds message templates for controller responses.
 type ControllerMessageConfig struct {
 	BotStarted          string `json:"BOT_STARTED"`
@@ -108,6 +158,7 @@ type Config struct {
 	System            SystemConfig            `json:"system"`
 	Debug             DebugConfig             `json:"debug"`
 	Komari            KomariConfig            `json:"komari"`
+	Webhook           WebhookReceiverConfig   `json:"webhook"`
 	ControllerMethod  ControllerMethodConfig  `json:"controllerMethod"`
 	ControllerMessage ControllerMessageConfig `json:"controllerMessage"`
 	DataPath          string                  `json:"dataPath"`

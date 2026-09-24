@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"nukumizu-backend/config"
+	"nukumizu-backend/internal/controller"
 	"nukumizu-backend/internal/netproxy"
 	"nukumizu-backend/internal/node"
 	"nukumizu-backend/internal/template"
@@ -52,6 +53,12 @@ func (n *NtfyController) IsEnabled() bool {
 	return n.cfg.Enabled
 }
 
+// IsMarkdown returns whether the channel renders Markdown, per its markdown
+// setting in config.json.
+func (n *NtfyController) IsMarkdown() bool {
+	return n.cfg.Markdown
+}
+
 // SendStatusChange sends a status change notification via Ntfy.
 func (n *NtfyController) SendStatusChange(change node.StatusChange) error {
 	if !n.cfg.Enabled {
@@ -60,7 +67,7 @@ func (n *NtfyController) SendStatusChange(change node.StatusChange) error {
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromStatusChange(change)
-	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params)
+	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params, n.cfg.Markdown)
 
 	title := fmt.Sprintf("Server %s: %s", change.Name, change.Event)
 	return n.publish(title, message)
@@ -74,7 +81,7 @@ func (n *NtfyController) SendServerList(onlineServers, offlineServers string) er
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromServerList()
-	message := template.Render(cfg.ControllerMessage.ServerList, params)
+	message := template.Render(cfg.ControllerMessage.ServerList, params, n.cfg.Markdown)
 
 	return n.publish("Server List", message)
 }
@@ -87,10 +94,20 @@ func (n *NtfyController) SendExecuteResult(serverName, serverUUID, command, resu
 
 	cfg := config.C_globalConfig
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
-	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params)
+	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params, n.cfg.Markdown)
 
 	title := fmt.Sprintf("Command Result: %s on %s", command, serverName)
 	return n.publish(title, message)
+}
+
+// SendAlert sends an alert submitted through the incoming webhook API to the
+// configured topic.
+func (n *NtfyController) SendAlert(alert controller.Alert) error {
+	if !n.cfg.Enabled {
+		return nil
+	}
+
+	return n.publish(alert.Subject, alert.Render(n.cfg.Markdown))
 }
 
 func (n *NtfyController) publish(title, message string) error {
