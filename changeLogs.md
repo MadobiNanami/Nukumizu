@@ -1,4 +1,4 @@
-## Ver.0.2.0.5
+## Ver.0.2.0.5-661cf08.pre-release
 ### Features
 - [Enhance security of websocket log system]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/da467c9297e641e2ab9a1889252589503791b7e9")
 - [Implement incoming webhook API interface with configurable endpoints]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/48533404fac20c23134e3ec1d3305ebdf4423c80")
