@@ -60,13 +60,12 @@ func AddWebhookEndpoint(name string, fields map[string]interface{}) error {
 		return err
 	}
 
-	settingsLock.Lock()
-	defer settingsLock.Unlock()
-
-	if _, exists := webhookEndpoint(name); exists {
-		return fmt.Errorf("%w: %s", ErrWebhookEndpointExists, name)
-	}
-	return updateSettingsLocked(SettingGlobal, webhookEndpointsPatch(name, patch))
+	return runSettingsUpdate(func() (*Config, error) {
+		if _, exists := webhookEndpoint(name); exists {
+			return nil, fmt.Errorf("%w: %s", ErrWebhookEndpointExists, name)
+		}
+		return updateSettingsLocked(SettingGlobal, webhookEndpointsPatch(name, patch))
+	})
 }
 
 // ModifyWebhookEndpoint updates an existing incoming webhook endpoint. Only the
@@ -84,27 +83,24 @@ func ModifyWebhookEndpoint(name string, fields map[string]interface{}) error {
 		return fmt.Errorf("%w: no fields to update", ErrWebhookEndpointInvalid)
 	}
 
-	settingsLock.Lock()
-	defer settingsLock.Unlock()
-
-	if _, exists := webhookEndpoint(name); !exists {
-		return fmt.Errorf("%w: %s", ErrWebhookEndpointNotFound, name)
-	}
-	return updateSettingsLocked(SettingGlobal, webhookEndpointsPatch(name, patch))
+	return runSettingsUpdate(func() (*Config, error) {
+		if _, exists := webhookEndpoint(name); !exists {
+			return nil, fmt.Errorf("%w: %s", ErrWebhookEndpointNotFound, name)
+		}
+		return updateSettingsLocked(SettingGlobal, webhookEndpointsPatch(name, patch))
+	})
 }
 
 // DeleteWebhookEndpoint removes the incoming webhook endpoint registered under
 // name. The endpoint stops accepting requests as soon as the configuration is
 // reloaded.
 func DeleteWebhookEndpoint(name string) error {
-	settingsLock.Lock()
-	defer settingsLock.Unlock()
-
-	if _, exists := webhookEndpoint(name); !exists {
-		return fmt.Errorf("%w: %s", ErrWebhookEndpointNotFound, name)
-	}
-
-	return updateSettingsLocked(SettingGlobal, webhookEndpointDeletePatch(name))
+	return runSettingsUpdate(func() (*Config, error) {
+		if _, exists := webhookEndpoint(name); !exists {
+			return nil, fmt.Errorf("%w: %s", ErrWebhookEndpointNotFound, name)
+		}
+		return updateSettingsLocked(SettingGlobal, webhookEndpointDeletePatch(name))
+	})
 }
 
 // webhookEndpoint returns the named endpoint held by the loaded configuration.

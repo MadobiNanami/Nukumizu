@@ -82,19 +82,45 @@ func GetSettings(settingsType string) ([]byte, error) {
 // written the matching in-memory singleton is reloaded so runtime code observes
 // the new values.
 func UpdateSettings(settingsType string, patch map[string]interface{}) error {
-	settingsLock.Lock()
-	defer settingsLock.Unlock()
+	return runSettingsUpdate(func() (*Config, error) {
+		return updateSettingsLocked(settingsType, patch)
+	})
+}
 
-	return updateSettingsLocked(settingsType, patch)
+// runSettingsUpdate runs fn under settingsLock and then, once the lock is
+// released, runs the reload hooks with whatever configuration fn reports (nil
+// when the update did not touch config.json).
+//
+// The hooks deliberately run outside settingsLock. A hook rebuilds controllers,
+// which can wait on a network call, while settingsLock is also held by the node
+// tracker's background save (SaveBotNodeConfig); holding it across a hook would
+// stall node registration behind an unrelated settings edit.
+func runSettingsUpdate(fn func() (*Config, error)) error {
+	cfg, err := func() (*Config, error) {
+		settingsLock.Lock()
+		defer settingsLock.Unlock()
+		return fn()
+	}()
+	if err != nil {
+		return err
+	}
+
+	notifyReload(cfg)
+	return nil
 }
 
 // updateSettingsLocked is UpdateSettings without the locking, for callers that
 // need to inspect the loaded configuration and write in one critical section
 // (see the incoming webhook endpoint helpers). Callers must hold settingsLock.
-func updateSettingsLocked(settingsType string, patch map[string]interface{}) error {
+//
+// It returns the freshly loaded global configuration, or nil when the settings
+// type is one of the other files. The caller is responsible for handing that
+// value to notifyReload once settingsLock is released — which runSettingsUpdate
+// does for every writer.
+func updateSettingsLocked(settingsType string, patch map[string]interface{}) (*Config, error) {
 	path, err := settingsPath(settingsType)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Start from whatever is already on disk so nothing is dropped. A missing or
@@ -104,23 +130,23 @@ func updateSettingsLocked(settingsType string, patch map[string]interface{}) err
 	if err == nil {
 		if len(bytes.TrimSpace(data)) > 0 {
 			if err := json.Unmarshal(data, &current); err != nil {
-				return fmt.Errorf("failed to parse existing %s settings file %s: %w", settingsType, path, err)
+				return nil, fmt.Errorf("failed to parse existing %s settings file %s: %w", settingsType, path, err)
 			}
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("failed to read existing %s settings file %s: %w", settingsType, path, err)
+		return nil, fmt.Errorf("failed to read existing %s settings file %s: %w", settingsType, path, err)
 	}
 
 	deepMergeSettings(current, patch)
 
 	data, err = json.MarshalIndent(current, "", "    ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal %s settings: %w", settingsType, err)
+		return nil, fmt.Errorf("failed to marshal %s settings: %w", settingsType, err)
 	}
 	data = append(data, '\n')
 
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("failed to write %s settings file %s: %w", settingsType, path, err)
+		return nil, fmt.Errorf("failed to write %s settings file %s: %w", settingsType, path, err)
 	}
 
 	return reloadSettings(settingsType, path)
@@ -151,18 +177,19 @@ func deepMergeSettings(dst, src map[string]interface{}) {
 }
 
 // reloadSettings refreshes the in-memory singleton for the given settings type
-// so the running program observes the values just persisted to disk.
-func reloadSettings(settingsType, path string) error {
+// so the running program observes the values just persisted to disk. Only
+// config.json has a hook-visible reload, so for SettingGlobal it returns the
+// configuration now in effect and for the other types it returns nil.
+func reloadSettings(settingsType, path string) (*Config, error) {
 	switch settingsType {
 	case SettingGlobal:
-		_, err := LoadGlobalConfig(path)
-		return err
+		return LoadGlobalConfig(path)
 	case SettingBotUserConfig:
 		_, err := LoadBotUserConfig(path)
-		return err
+		return nil, err
 	case SettingBotNodeConfig:
-		return LoadBotNodeConfig(path)
+		return nil, LoadBotNodeConfig(path)
 	default:
-		return ErrUnsupportedSettingsType
+		return nil, ErrUnsupportedSettingsType
 	}
 }

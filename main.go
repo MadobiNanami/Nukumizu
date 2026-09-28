@@ -58,6 +58,14 @@ func main() {
 	postLog.SetDebugMode(cfg.System.DebugMode)
 	postLog.InitLogBroadcaster()
 
+	// The logger's debug flag is a process-wide setting rather than something
+	// read at every log call, so a settings update has to push the new value
+	// into it. This is the first link in the reload hook chain; the controllers
+	// join it as they gain reload support.
+	config.OnReload(func(updated *config.Config) {
+		postLog.SetDebugMode(updated.System.DebugMode)
+	})
+
 	dbPath := cfg.DBPath
 
 	if err := postLog.InitLogsDatabase(fmt.Sprintf("%s/log.db", dbPath)); err != nil {
