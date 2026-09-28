@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"nukumizu-backend/global"
@@ -22,6 +23,89 @@ const (
 // ErrUnsupportedSettingsType is returned when a settings type is not one of the
 // accepted constants above.
 var ErrUnsupportedSettingsType = errors.New("unsupported settings type")
+
+// startupOnlySettings are the config.json keys that are read once before the
+// program starts serving and never again: the listener addresses, the paths the
+// databases are opened from, and the Komari dashboard its client is built
+// against. Editing one writes the file and replaces the in-memory
+// configuration, but the running program keeps the old value, so an update that
+// touches one is reported back to the caller instead of being silently
+// accepted.
+//
+// Keep this in step with main: these are exactly the settings main reads before
+// the HTTP server comes up. Everything else — controllerMethod, networkProxy,
+// the message templates, the debug switches — is picked up at runtime.
+var startupOnlySettings = []string{
+	"system.listenAddr",
+	"system.listenPort",
+	"webhook.enabled",
+	"webhook.listenAddr",
+	"webhook.listenPort",
+	"komari.dashboardURL",
+	"dataPath",
+	"dbPath",
+}
+
+// RestartRequiredKeys lists the settings in patch that only take effect at
+// startup, as dot-separated paths, in the order startupOnlySettings declares
+// them. Only config.json carries such settings; an update to one of the other
+// files always reports nothing.
+//
+// The write itself succeeds either way — this is advice for the user, not a
+// rejection. The result is never nil, so a caller can put it straight into a
+// JSON response and get [] rather than null.
+func RestartRequiredKeys(settingsType string, patch map[string]interface{}) []string {
+	keys := []string{}
+	if settingsType != SettingGlobal {
+		return keys
+	}
+
+	patched := patchPaths(patch)
+	for _, watched := range startupOnlySettings {
+		for _, path := range patched {
+			if pathsOverlap(path, watched) {
+				keys = append(keys, watched)
+				break
+			}
+		}
+	}
+	return keys
+}
+
+// patchPaths expands a nested settings patch into the dot-separated paths of its
+// leaves. An object is descended into rather than reported, so a patch that only
+// names sections still resolves to the keys it changes, and a JSON null is a
+// leaf because it deletes the key it names.
+func patchPaths(patch map[string]interface{}) []string {
+	paths := []string{}
+	var walk func(prefix string, node map[string]interface{})
+	walk = func(prefix string, node map[string]interface{}) {
+		for key, value := range node {
+			path := key
+			if prefix != "" {
+				path = prefix + "." + key
+			}
+			if nested, ok := value.(map[string]interface{}); ok && nested != nil {
+				walk(path, nested)
+				continue
+			}
+			paths = append(paths, path)
+		}
+	}
+	walk("", patch)
+	return paths
+}
+
+// pathsOverlap reports whether a patched path and a watched setting can affect
+// each other: they are the same key, the patch names something inside the
+// watched setting, or the patch names a section the watched setting lives in.
+// The last case matters because a patch may replace a whole section, which
+// changes every key under it.
+func pathsOverlap(patched, watched string) bool {
+	return patched == watched ||
+		strings.HasPrefix(patched, watched+".") ||
+		strings.HasPrefix(watched, patched+".")
+}
 
 // settingsLock serializes read-modify-write access to the on-disk configuration
 // files so concurrent admin edits (UpdateSettings) and the node tracker's

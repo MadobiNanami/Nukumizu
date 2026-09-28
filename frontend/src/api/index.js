@@ -13,6 +13,10 @@ export const serverApi = {
 
 // /api/settings/get?type=… / /api/settings/set?type=…
 // get → { success, message, data: { config } }.
+// set → { success, message, data: { type, restartRequired } }, where
+//       restartRequired lists the keys the update changed that are only read at
+//       startup, so the caller can say which edits are not live yet. It is
+//       always an array, empty when the whole update took effect.
 // `type` is one of global | bot_user_config | bot_node_config.
 // For set, pass a partial object; a JSON null value removes that key.
 export const settingsApi = {

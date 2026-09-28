@@ -47,6 +47,10 @@ func SettingsGetHandler(w http.ResponseWriter, r *http.Request) {
 //	{"system": {"debugMode": true}}
 //
 // Multiple entries may be given at once; only the provided keys are changed.
+//
+// The response carries data.restartRequired: the keys the update changed that
+// are only read at startup, so the caller can say which edits are not live yet.
+// It is empty for an update that took effect in full.
 func SettingsSetHandler(w http.ResponseWriter, r *http.Request) {
 	if !utils.Auth(w, r, "POST", "admin") {
 		return
@@ -80,7 +84,10 @@ func SettingsSetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The write landed either way. This only tells the caller which of the keys
+	// it changed will not be live until the program is restarted.
 	utils.SendSuccessResponse(w, "settings updated successfully", map[string]interface{}{
-		"type": settingsType,
+		"type":            settingsType,
+		"restartRequired": config.RestartRequiredKeys(settingsType, patch),
 	})
 }

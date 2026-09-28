@@ -133,8 +133,15 @@ async function save() {
     const patch = wrapRoot(props.section, nest(obj));
     saving.value = true;
     try {
-        await settingsApi.set('global', patch);
-        toast.success(`${props.section.title} saved`);
+        const res = await settingsApi.set('global', patch);
+        // The backend reports the keys it wrote that are only read at startup.
+        // A plain "saved" would suggest those are live too.
+        const pending = (res && res.data && res.data.restartRequired) || [];
+        if (pending.length) {
+            toast.warn(`${props.section.title} saved — restart to apply: ${pending.join(', ')}`, 7000);
+        } else {
+            toast.success(`${props.section.title} saved`);
+        }
         emit('saved');
     } catch (e) {
         toast.error('Failed to save: ' + e.message);

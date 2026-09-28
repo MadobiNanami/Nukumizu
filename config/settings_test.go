@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -145,6 +146,162 @@ func TestUpdateSettingsReplacesArraysAndKeepsNumbers(t *testing.T) {
 	}
 	if strings.Contains(got, "old@example.com") {
 		t.Errorf("array was merged instead of replaced:\n%s", got)
+	}
+}
+
+func TestRestartRequiredKeys(t *testing.T) {
+	cases := []struct {
+		name         string
+		settingsType string
+		patch        map[string]interface{}
+		want         []string
+	}{
+		{
+			name:         "a runtime switch needs no restart",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{"system": map[string]interface{}{"debugMode": true}},
+			want:         []string{},
+		},
+		{
+			name:         "the listen port does",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{"system": map[string]interface{}{"listenPort": "9090"}},
+			want:         []string{"system.listenPort"},
+		},
+		{
+			name:         "only the startup key of a mixed patch is reported",
+			settingsType: SettingGlobal,
+			patch: map[string]interface{}{
+				"system": map[string]interface{}{"listenPort": "9090", "debugMode": true},
+			},
+			want: []string{"system.listenPort"},
+		},
+		{
+			name:         "a top-level path is reported",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{"dataPath": "/srv/data"},
+			want:         []string{"dataPath"},
+		},
+		{
+			name:         "results follow the declared order, not the patch order",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{"dbPath": "/srv/db", "dataPath": "/srv/data"},
+			want:         []string{"dataPath", "dbPath"},
+		},
+		{
+			name:         "deleting a startup key with null is reported",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{"system": map[string]interface{}{"listenPort": nil}},
+			want:         []string{"system.listenPort"},
+		},
+		{
+			name:         "replacing a whole section reports the startup keys inside it",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{"webhook": map[string]interface{}{"listenAddr": "127.0.0.1"}},
+			want:         []string{"webhook.listenAddr"},
+		},
+		{
+			// Deleting the section resets the URL to its built-in default.
+			name:         "deleting a section the startup key lives in reports it",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{"komari": nil},
+			want:         []string{"komari.dashboardURL"},
+		},
+		{
+			name:         "deleting a section reports every startup key inside it",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{"webhook": nil},
+			want:         []string{"webhook.enabled", "webhook.listenAddr", "webhook.listenPort"},
+		},
+		{
+			// An empty object merges nothing, so it changes no key and needs no
+			// restart — surprising enough to pin.
+			name:         "an empty object changes nothing",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{"komari": map[string]interface{}{}},
+			want:         []string{},
+		},
+		{
+			// webhook.endpoints must not be mistaken for webhook.enabled.
+			name:         "a sibling subtree is not mistaken for the startup key",
+			settingsType: SettingGlobal,
+			patch: map[string]interface{}{
+				"webhook": map[string]interface{}{
+					"endpoints": map[string]interface{}{"example": map[string]interface{}{"enabled": true}},
+				},
+			},
+			want: []string{},
+		},
+		{
+			// The Komari credentials are re-read on the next login, so only the
+			// dashboard URL is startup-only.
+			name:         "komari credentials are not startup-only",
+			settingsType: SettingGlobal,
+			patch: map[string]interface{}{
+				"komari": map[string]interface{}{
+					"account": map[string]interface{}{"username": "admin", "password": "x"},
+				},
+			},
+			want: []string{},
+		},
+		{
+			name:         "controller settings are not startup-only",
+			settingsType: SettingGlobal,
+			patch: map[string]interface{}{
+				"controllerMethod": map[string]interface{}{
+					"telegram": map[string]interface{}{"enabled": true, "botToken": "t"},
+				},
+			},
+			want: []string{},
+		},
+		{
+			name:         "an empty patch reports nothing",
+			settingsType: SettingGlobal,
+			patch:        map[string]interface{}{},
+			want:         []string{},
+		},
+		{
+			// Only config.json has settings that are read once at startup.
+			name:         "the other settings files never need a restart",
+			settingsType: SettingBotUserConfig,
+			patch:        map[string]interface{}{"dataPath": "/srv/data"},
+			want:         []string{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := RestartRequiredKeys(tc.settingsType, tc.patch)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("RestartRequiredKeys() = %v, want %v", got, tc.want)
+			}
+			if got == nil {
+				t.Error("the result must never be nil, so it serializes as [] rather than null")
+			}
+		})
+	}
+}
+
+// TestRestartRequiredKeysIsAdvisory pins that reporting a startup-only key does
+// not stop the write: the caller is told, the file is still updated.
+func TestRestartRequiredKeysIsAdvisory(t *testing.T) {
+	writeTempConfig(t, &global.ConfigPath.Global, `{"system":{"listenPort":"8080"}}`)
+
+	keys := RestartRequiredKeys(SettingGlobal, map[string]interface{}{
+		"system": map[string]interface{}{"listenPort": "9090"},
+	})
+	if len(keys) != 1 {
+		t.Fatalf("expected the listen port to be reported, got %v", keys)
+	}
+
+	if err := UpdateSettings(SettingGlobal, map[string]interface{}{
+		"system": map[string]interface{}{"listenPort": "9090"},
+	}); err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+
+	if got := Current().System.ListenPort; got != "9090" {
+		t.Errorf("the update was not applied: listenPort = %q", got)
 	}
 }
 

@@ -11,7 +11,7 @@ const sections = [
     {
         id: 'system',
         title: 'System',
-        hint: 'HTTP listener and global runtime switches.',
+        hint: 'HTTP listener and global runtime switches. A changed listen address or port applies on restart.',
         root: ['system'],
         fields: [
             { key: 'debugMode', type: 'bool', label: 'Debug mode', help: 'Skipped X-Timestamp checks and verbose debug logging.' },
@@ -37,7 +37,7 @@ const sections = [
     {
         id: 'komari',
         title: 'Komari dashboard',
-        hint: 'Connection the monitor reads node data from. Takes effect on restart.',
+        hint: 'Connection the monitor reads node data from. The URL applies on restart; the account is re-read on the next login.',
         root: ['komari'],
         fields: [
             { key: 'dashboardURL', type: 'text', label: 'Dashboard URL' },
