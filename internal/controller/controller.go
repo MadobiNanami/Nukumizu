@@ -3,8 +3,10 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"nukumizu-backend/config"
 	"nukumizu-backend/internal/node"
@@ -88,15 +90,6 @@ type Controller interface {
 	// IsMarkdown reports whether the channel renders Markdown, per its own
 	// "markdown" setting in config.json.
 	IsMarkdown() bool
-	// Reload applies the current configuration to a running controller, so a
-	// settings update takes effect without a restart. It reads the live
-	// configuration itself and rebuilds whatever it derived from the old one.
-	//
-	// Reload runs on the goroutine serving the settings update while the send
-	// methods may be running on others, so an implementation must not replace
-	// state those methods read without synchronizing (see the atomic pointers in
-	// the notification pipes).
-	Reload()
 	SendStatusChange(change node.StatusChange) error
 	SendServerList(onlineServers, offlineServers string) error
 	SendExecuteResult(serverName, serverUUID, command, result string) error
@@ -118,6 +111,12 @@ type BotController interface {
 type Manager struct {
 	mu          sync.RWMutex
 	controllers map[string]Controller
+
+	// builtFrom records the controllerMethod section the registered controllers
+	// were built from, so a settings update that concerns them can be told apart
+	// from one that does not. It is read on the settings-update goroutine and
+	// written when the set is replaced.
+	builtFrom atomic.Pointer[config.ControllerMethodConfig]
 }
 
 var globalManager *Manager
@@ -135,30 +134,69 @@ func GetManager() *Manager {
 	return globalManager
 }
 
-// Register adds a controller to the manager.
-func (m *Manager) Register(c Controller) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.controllers[c.Name()] = c
-	postLog.Info("Controller registered: " + c.Name())
+// NeedsRebuild reports whether next differs from the controllerMethod section
+// the registered controllers were built from. A manager with no controllers yet
+// always reports true, so the first call installs the initial set.
+//
+// Controllers are rebuilt wholesale rather than reconfigured in place: each one
+// reads its settings into fields at construction, and two of them own
+// connections that cannot be re-pointed (the NapCat WebSocket listener is
+// stopped through a sync.Once, the Telegram polling context is created with the
+// controller). Replacing the set keeps every channel on the same footing.
+func (m *Manager) NeedsRebuild(next config.ControllerMethodConfig) bool {
+	built := m.builtFrom.Load()
+	if built == nil {
+		return true
+	}
+	// The section carries a header map and a recipient slice, so it is not
+	// comparable with ==.
+	return !reflect.DeepEqual(*built, next)
 }
 
-// ReloadAll applies the current configuration to every registered controller,
-// so a settings update reaches the channels without a restart.
+// ReplaceAll stops every registered controller and swaps in next, which the
+// caller built from method. It is the only way controllers are installed, at
+// startup and after a settings change alike.
 //
-// The controllers are collected under the registry lock and reloaded outside
-// it: a reload can rebuild a client and block on the network, and holding m.mu
-// across that would stall every notification for its duration.
-func (m *Manager) ReloadAll() {
-	m.mu.RLock()
-	controllers := make([]Controller, 0, len(m.controllers))
-	for _, ctrl := range m.controllers {
-		controllers = append(controllers, ctrl)
+// The swap happens under the registry lock so routing flips to the new set
+// atomically; stopping and starting happen outside it. Both can block — Stop
+// closes sockets, Start performs a handshake — and holding m.mu across them
+// would stall every notification for the duration.
+func (m *Manager) ReplaceAll(next []Controller, method config.ControllerMethodConfig) {
+	m.mu.Lock()
+	previous := m.controllers
+	m.controllers = make(map[string]Controller, len(next))
+	for _, ctrl := range next {
+		m.controllers[ctrl.Name()] = ctrl
 	}
-	m.mu.RUnlock()
+	m.mu.Unlock()
 
-	for _, ctrl := range controllers {
-		ctrl.Reload()
+	m.builtFrom.Store(&method)
+
+	names := make([]string, 0, len(next))
+	for _, ctrl := range next {
+		names = append(names, ctrl.Name())
+	}
+	postLog.Info("Controller set installed: " + strings.Join(names, ", "))
+
+	for _, ctrl := range previous {
+		ctrl.Stop()
+	}
+
+	// Start off the calling goroutine, the way startup does: Telegram's getMe
+	// and the NapCat WebSocket handshake would otherwise hold the settings
+	// request open for as long as they take. The new controllers are already
+	// routable, and each one can send before Start returns.
+	for _, ctrl := range next {
+		go func(ctrl Controller) {
+			defer func() {
+				if r := recover(); r != nil {
+					postLog.Error(fmt.Sprintf("Controller %s panicked on start: %v", ctrl.Name(), r))
+				}
+			}()
+			if err := ctrl.Start(); err != nil {
+				postLog.Error(fmt.Sprintf("Failed to start controller %s: %v", ctrl.Name(), err))
+			}
+		}(ctrl)
 	}
 }
 

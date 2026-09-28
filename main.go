@@ -66,9 +66,17 @@ func main() {
 	config.OnReload(func(updated *config.Config) {
 		postLog.SetDebugMode(updated.System.DebugMode)
 
-		if mgr := controller.GetManager(); mgr != nil {
-			mgr.ReloadAll()
+		mgr := controller.GetManager()
+		if mgr == nil || !mgr.NeedsRebuild(updated.ControllerMethod) {
+			return
 		}
+
+		// Controller settings changed. Each controller reads its settings into
+		// fields when it is built, and the NapCat and Telegram ones own
+		// connections that cannot be re-pointed, so the change is applied by
+		// replacing the whole set rather than reconfiguring it in place.
+		postLog.Info("Controller settings changed; rebuilding every channel")
+		mgr.ReplaceAll(buildControllers(updated), updated.ControllerMethod)
 	})
 
 	dbPath := cfg.DBPath
@@ -212,83 +220,28 @@ func startWebhookServer(cfg *config.Config) {
 	}()
 }
 
-// initControllers initializes and starts all configured controllers.
+// buildControllers constructs one controller per channel from the given
+// configuration. The set is built fresh whenever controller settings change,
+// because a controller reads its settings once at construction and two of them
+// own connections that cannot be re-pointed.
+func buildControllers(cfg *config.Config) []controller.Controller {
+	return []controller.Controller{
+		qq_napcat.NewQQController(cfg.ControllerMethod.QQ),
+		telegram.NewTelegramController(cfg.ControllerMethod.Telegram),
+		pipes.NewEmailController(cfg.ControllerMethod.Email),
+		pipes.NewNtfyController(cfg.ControllerMethod.Ntfy),
+		pipes.NewWebhookController(cfg.ControllerMethod.Webhook),
+	}
+}
+
+// initControllers installs the initial controller set.
 func initControllers() {
 	cfg := config.Current()
 	mgr := controller.GetManager()
-	if mgr == nil {
+	if mgr == nil || cfg == nil {
 		return
 	}
-
-	// QQ (Napcat) controller.
-	qqCtrl := qq_napcat.NewQQController(cfg.ControllerMethod.QQ)
-	mgr.Register(qqCtrl)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				postLog.Error(fmt.Sprintf("QQ controller panic: %v", r))
-			}
-		}()
-		if err := qqCtrl.Start(); err != nil {
-			postLog.Error("Failed to start QQ controller: " + err.Error())
-		}
-	}()
-
-	// Telegram controller.
-	tgCtrl := telegram.NewTelegramController(cfg.ControllerMethod.Telegram)
-	mgr.Register(tgCtrl)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				postLog.Error(fmt.Sprintf("Telegram controller panic: %v", r))
-			}
-		}()
-		if err := tgCtrl.Start(); err != nil {
-			postLog.Error("Failed to start Telegram controller: " + err.Error())
-		}
-	}()
-
-	// Email controller (status-only).
-	emailCtrl := pipes.NewEmailController(cfg.ControllerMethod.Email)
-	mgr.Register(emailCtrl)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				postLog.Error(fmt.Sprintf("Email controller panic: %v", r))
-			}
-		}()
-		if err := emailCtrl.Start(); err != nil {
-			postLog.Error("Failed to start Email controller: " + err.Error())
-		}
-	}()
-
-	// Ntfy controller (status-only).
-	ntfyCtrl := pipes.NewNtfyController(cfg.ControllerMethod.Ntfy)
-	mgr.Register(ntfyCtrl)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				postLog.Error(fmt.Sprintf("Ntfy controller panic: %v", r))
-			}
-		}()
-		if err := ntfyCtrl.Start(); err != nil {
-			postLog.Error("Failed to start Ntfy controller: " + err.Error())
-		}
-	}()
-
-	// Webhook controller (status-only).
-	webhookCtrl := pipes.NewWebhookController(cfg.ControllerMethod.Webhook)
-	mgr.Register(webhookCtrl)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				postLog.Error(fmt.Sprintf("Webhook controller panic: %v", r))
-			}
-		}()
-		if err := webhookCtrl.Start(); err != nil {
-			postLog.Error("Failed to start Webhook controller: " + err.Error())
-		}
-	}()
+	mgr.ReplaceAll(buildControllers(cfg), cfg.ControllerMethod)
 }
 
 // startBackgroundTasks starts periodic background goroutines.

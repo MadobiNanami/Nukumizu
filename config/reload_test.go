@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 
 	"nukumizu-backend/global"
@@ -87,6 +88,40 @@ func TestReloadHookIsolatesPanic(t *testing.T) {
 	cfg := Current()
 	if cfg == nil || !cfg.System.DebugMode {
 		t.Error("the settings write did not take effect")
+	}
+}
+
+// TestUnrelatedUpdateLeavesControllerMethodAlone guards the trigger for a
+// controller rebuild. Whether to rebuild is decided by comparing the whole
+// controllerMethod section with the one the running controllers were built
+// from, so reloading the file has to reproduce that section byte for byte. A
+// default applied inconsistently — a nil recipient slice turned into an empty
+// one on the second load, say — would make every settings edit look like a
+// controller change and tear down every channel on each save.
+func TestUnrelatedUpdateLeavesControllerMethodAlone(t *testing.T) {
+	writeTempConfig(t, &global.ConfigPath.Global, `{
+    "controllerMethod": {
+        "qq(napcat)": { "enabled": false },
+        "email": { "enabled": false, "to": [] },
+        "webhook": { "enabled": false, "headers": {} }
+    }
+}`)
+
+	first, err := LoadGlobalConfig(global.ConfigPath.Global)
+	if err != nil {
+		t.Fatalf("LoadGlobalConfig: %v", err)
+	}
+	before := first.ControllerMethod
+
+	if err := UpdateSettings(SettingGlobal, map[string]interface{}{
+		"controllerMessage": map[string]interface{}{"BOT_STARTED": "hello"},
+	}); err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+
+	after := Current().ControllerMethod
+	if !reflect.DeepEqual(before, after) {
+		t.Errorf("an unrelated update changed the controllerMethod section:\nbefore: %+v\nafter:  %+v", before, after)
 	}
 }
 

@@ -124,21 +124,6 @@ func (t *TelegramController) IsEnabled() bool {
 	return t.cfg.Enabled
 }
 
-// Reload is not implemented yet for this channel.
-//
-// The bot client is built from the token and the polling context is created
-// with the controller, so a stopped controller cannot be restarted in place:
-// applying a change means building a replacement controller and swapping it
-// into the manager. Until then the divergence is reported rather than ignored,
-// so an edit that needs a restart does not look like it took effect.
-func (t *TelegramController) Reload() {
-	global := config.Current()
-	if global == nil || t.cfg == global.ControllerMethod.Telegram {
-		return
-	}
-	postLog.Warning("Telegram settings changed but hot reload is not implemented for this channel yet; restart to apply them")
-}
-
 // IsMarkdown returns whether the channel renders Markdown, per its markdown
 // setting in config.json.
 func (t *TelegramController) IsMarkdown() bool {

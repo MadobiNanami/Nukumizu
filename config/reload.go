@@ -16,6 +16,12 @@ import (
 var (
 	reloadHooksMu sync.Mutex
 	reloadHooks   []func(*Config)
+
+	// reloadRunMu serializes hook execution. A hook mutates process-wide state
+	// — the logger's debug flag, the controller registry — so two overlapping
+	// settings updates must not run them at the same time, or both would decide
+	// to rebuild the controllers from their own view of what was applied.
+	reloadRunMu sync.Mutex
 )
 
 // OnReload registers a hook to run after every reload of the global
@@ -47,13 +53,15 @@ func notifyReload(cfg *Config) {
 		return
 	}
 
-	// Copy under the lock, then run outside it: a hook is free to register
-	// another hook without deadlocking.
+	// Copy under the registry lock, then release it before running anything: a
+	// hook is free to register another hook without deadlocking.
 	reloadHooksMu.Lock()
 	hooks := make([]func(*Config), len(reloadHooks))
 	copy(hooks, reloadHooks)
 	reloadHooksMu.Unlock()
 
+	reloadRunMu.Lock()
+	defer reloadRunMu.Unlock()
 	for _, hook := range hooks {
 		runReloadHook(hook, cfg)
 	}

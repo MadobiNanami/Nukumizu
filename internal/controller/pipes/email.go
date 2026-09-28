@@ -3,8 +3,6 @@ package pipes
 import (
 	"fmt"
 	"net"
-	"reflect"
-	"sync/atomic"
 
 	gomail "gopkg.in/mail.v2"
 
@@ -18,26 +16,17 @@ import (
 
 // EmailController handles email notifications via SMTP.
 //
-// The configuration is held behind an atomic pointer rather than in a plain
-// field: Reload replaces it on the settings-update goroutine while the send
-// methods read it on the status-change and incoming-webhook goroutines.
+// cfg is written once, by the constructor, and never again: a controller that
+// needs different settings is replaced wholesale by the manager rather than
+// reconfigured in place, so the send methods can read it without locking.
 type EmailController struct {
-	cfg atomic.Pointer[config.EmailConfig]
+	cfg config.EmailConfig
 }
 
 // NewEmailController creates a new Email controller.
 func NewEmailController(cfg config.EmailConfig) *EmailController {
-	e := &EmailController{}
-	e.cfg.Store(&cfg)
 	applyEmailProxy(cfg.NetworkUseProxy)
-	return e
-}
-
-// settings returns the configuration currently in effect. The value it points
-// at is never mutated after being stored, so a caller can hold the pointer for
-// one whole send without a concurrent Reload disturbing it.
-func (e *EmailController) settings() *config.EmailConfig {
-	return e.cfg.Load()
+	return &EmailController{cfg: cfg}
 }
 
 // applyEmailProxy routes SMTP through the HTTP CONNECT proxy, or restores a
@@ -61,7 +50,7 @@ func (e *EmailController) Name() string {
 
 // Start initializes the Email controller.
 func (e *EmailController) Start() error {
-	if !e.settings().Enabled {
+	if !e.cfg.Enabled {
 		postLog.Info("Email controller is disabled")
 		return nil
 	}
@@ -74,121 +63,90 @@ func (e *EmailController) Stop() {
 	postLog.Info("Email controller stopped")
 }
 
-// Reload applies the current configuration. Swapping in the new settings is
-// enough for everything read at the point of use; the proxy setting is the
-// exception, because it is baked into gomail's package-level dialer when the
-// controller is built rather than consulted per send.
-func (e *EmailController) Reload() {
-	global := config.Current()
-	if global == nil {
-		return
-	}
-
-	current := e.settings()
-	updated := global.ControllerMethod.Email
-	// EmailConfig carries a recipient slice, so it is not comparable with ==.
-	if reflect.DeepEqual(*current, updated) {
-		return
-	}
-
-	if current.NetworkUseProxy != updated.NetworkUseProxy {
-		applyEmailProxy(updated.NetworkUseProxy)
-	}
-	e.cfg.Store(&updated)
-	postLog.Debug("Email controller reloaded")
-}
-
 // IsEnabled returns whether the controller is enabled.
 func (e *EmailController) IsEnabled() bool {
-	return e.settings().Enabled
+	return e.cfg.Enabled
 }
 
 // IsMarkdown returns whether the channel renders Markdown, per its markdown
 // setting in config.json.
 func (e *EmailController) IsMarkdown() bool {
-	return e.settings().Markdown
+	return e.cfg.Markdown
 }
 
 // SendStatusChange sends a status change notification via Email.
 func (e *EmailController) SendStatusChange(change node.StatusChange) error {
-	s := e.settings()
-	if !s.Enabled {
+	if !e.cfg.Enabled {
 		return nil
 	}
-	if len(s.To) == 0 {
+	if len(e.cfg.To) == 0 {
 		postLog.Debug("Email controller has no recipients configured")
 		return nil
 	}
 
 	cfg := config.Current()
 	params := template.BuildParamsFromStatusChange(change)
-	body := template.Render(cfg.ControllerMessage.ServerStatusChanged, params, s.Markdown)
+	body := template.Render(cfg.ControllerMessage.ServerStatusChanged, params, e.cfg.Markdown)
 
 	subject := fmt.Sprintf("Server Status Change: %s - %s", change.Name, change.Event)
-	return e.sendEmail(s, subject, body)
+	return e.sendEmail(subject, body)
 }
 
 // SendServerList sends the server list via Email.
 func (e *EmailController) SendServerList(onlineServers, offlineServers string) error {
-	s := e.settings()
-	if !s.Enabled || len(s.To) == 0 {
+	if !e.cfg.Enabled || len(e.cfg.To) == 0 {
 		return nil
 	}
 
 	cfg := config.Current()
 	params := template.BuildParamsFromServerList()
-	body := template.Render(cfg.ControllerMessage.ServerList, params, s.Markdown)
+	body := template.Render(cfg.ControllerMessage.ServerList, params, e.cfg.Markdown)
 
-	return e.sendEmail(s, "Server List", body)
+	return e.sendEmail("Server List", body)
 }
 
 // SendExecuteResult sends a command execution result via Email.
 func (e *EmailController) SendExecuteResult(serverName, serverUUID, command, result string) error {
-	s := e.settings()
-	if !s.Enabled || len(s.To) == 0 {
+	if !e.cfg.Enabled || len(e.cfg.To) == 0 {
 		return nil
 	}
 
 	cfg := config.Current()
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
-	body := template.Render(cfg.ControllerMessage.ServerExecuteResult, params, s.Markdown)
+	body := template.Render(cfg.ControllerMessage.ServerExecuteResult, params, e.cfg.Markdown)
 
 	subject := fmt.Sprintf("Command Result: %s on %s", command, serverName)
-	return e.sendEmail(s, subject, body)
+	return e.sendEmail(subject, body)
 }
 
 // SendAlert sends an alert submitted through the incoming webhook API to the
 // configured recipients.
 func (e *EmailController) SendAlert(alert controller.Alert) error {
-	s := e.settings()
-	if !s.Enabled {
+	if !e.cfg.Enabled {
 		return nil
 	}
-	if len(s.To) == 0 {
+	if len(e.cfg.To) == 0 {
 		postLog.Debug("Email controller has no recipients configured")
 		return nil
 	}
 
-	return e.sendEmail(s, alert.Subject, alert.Render(s.Markdown))
+	return e.sendEmail(alert.Subject, alert.Render(e.cfg.Markdown))
 }
 
-// sendEmail delivers one message using the settings the caller already
-// snapshotted, so the recipients the guard approved are the recipients that
-// receive it even if a reload lands mid-send.
-func (e *EmailController) sendEmail(s *config.EmailConfig, subject, body string) error {
+func (e *EmailController) sendEmail(subject, body string) error {
 	m := gomail.NewMessage()
-	m.SetHeader("From", s.From)
-	m.SetHeader("To", s.To...)
+	m.SetHeader("From", e.cfg.From)
+	m.SetHeader("To", e.cfg.To...)
 	m.SetHeader("Subject", subject)
 	m.SetBody("text/plain", body)
 
-	d := gomail.NewDialer(s.SMTPHost, s.SMTPPort, s.Username, s.Password)
+	d := gomail.NewDialer(e.cfg.SMTPHost, e.cfg.SMTPPort, e.cfg.Username, e.cfg.Password)
 
 	if err := d.DialAndSend(m); err != nil {
 		postLog.Warning("Failed to send email: " + err.Error())
 		return err
 	}
 
-	postLog.Debug("Email sent successfully to " + fmt.Sprintf("%v", s.To))
+	postLog.Debug("Email sent successfully to " + fmt.Sprintf("%v", e.cfg.To))
 	return nil
 }
