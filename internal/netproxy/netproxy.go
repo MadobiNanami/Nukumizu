@@ -2,6 +2,10 @@
 // network proxy configured in the system config. Each caller decides whether
 // to use the proxy by passing its own useProxy flag (the per-channel
 // networkUseProxy setting), so proxying is opt-in per channel.
+//
+// The opt-in is captured when a client is built, but the proxy address is not:
+// it is read again on every request and every dial, so editing
+// system.networkProxy takes effect on clients that already exist.
 package netproxy
 
 import (
@@ -39,19 +43,23 @@ func proxyURL() *url.URL {
 }
 
 // ProxyFunc returns a transport proxy function that routes requests through
-// the configured network proxy when enabled. It returns nil when the caller
-// opts out or no proxy is configured, meaning direct connection. The returned
-// function is compatible with both http.Transport.Proxy and
-// websocket.Dialer.Proxy.
+// the configured network proxy when enabled, and nil when the caller opts out
+// of proxying entirely. The returned function is compatible with both
+// http.Transport.Proxy and websocket.Dialer.Proxy.
+//
+// The proxy address is resolved on every call rather than once here, so a
+// settings update that changes system.networkProxy reaches a client that was
+// already built. That is also why opting out is the only case that returns nil:
+// a function resolved to nothing at construction time would pin its client to
+// whatever was configured then. A nil URL from the returned function means no
+// proxy is configured and the request goes direct.
 func ProxyFunc(useProxy bool) func(*http.Request) (*url.URL, error) {
 	if !useProxy {
 		return nil
 	}
-	u := proxyURL()
-	if u == nil {
-		return nil
+	return func(*http.Request) (*url.URL, error) {
+		return proxyURL(), nil
 	}
-	return http.ProxyURL(u)
 }
 
 // HTTPClient builds an http.Client that sends traffic through the configured
@@ -71,10 +79,16 @@ func HTTPClient(useProxy bool, timeout time.Duration) *http.Client {
 // through the configured HTTP CONNECT proxy when enabled. Its signature
 // matches net.DialTimeout so it can be plugged into gomail's NetDialTimeout
 // to send SMTP over the proxy.
+//
+// Like ProxyFunc it reads the proxy address per dial, so clearing or changing
+// system.networkProxy reaches a dialer that already exists.
 func DialWithTimeout(useProxy bool) func(network, addr string, timeout time.Duration) (net.Conn, error) {
-	u := proxyURL()
 	return func(network, addr string, timeout time.Duration) (net.Conn, error) {
-		if !useProxy || u == nil {
+		if !useProxy {
+			return net.DialTimeout(network, addr, timeout)
+		}
+		u := proxyURL()
+		if u == nil {
 			return net.DialTimeout(network, addr, timeout)
 		}
 		return dialViaProxy(u, addr, timeout)
