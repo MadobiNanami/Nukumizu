@@ -18,6 +18,14 @@ import (
 	"nukumizu-backend/postLog"
 )
 
+// taskEchoEnabled reports whether Komari task progress should be echoed to the
+// log: debug mode plus the showKomariTaskEcho toggle. The configuration is read
+// once per call so both flags come from the same reload.
+func taskEchoEnabled() bool {
+	cfg := config.Current()
+	return cfg != nil && cfg.System.DebugMode && cfg.Debug.ShowKomariTaskEcho
+}
+
 // NodeInfo represents a single node as returned by Komari's
 // common:getNodes RPC2 method.
 type NodeInfo struct {
@@ -146,7 +154,7 @@ func (c *Client) Login(username, password string) error {
 
 	var kr KomariResponse
 	if err := json.NewDecoder(resp.Body).Decode(&kr); err != nil {
-		if config.C_globalConfig.System.DebugMode {
+		if config.IsDebugMode() {
 			respBody, _ := io.ReadAll(resp.Body)
 			return fmt.Errorf("failed to parse komari login response: %w.\nResponse: %s", err, respBody)
 		}
@@ -332,7 +340,7 @@ func (c *Client) ExecTask(uuids []string, command string) (string, error) {
 		return "", fmt.Errorf("failed to parse komari task exec data: %w", err)
 	}
 
-	if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowKomariTaskEcho {
+	if taskEchoEnabled() {
 		postLog.Debug(fmt.Sprintf("Created Komari task %s for %d clients", result.TaskID, len(uuids)))
 	}
 	return result.TaskID, nil
@@ -375,7 +383,7 @@ func (c *Client) GetTaskResult(taskID string) ([]TaskResult, bool, error) {
 // PollTaskResult polls for task results every 1 second until all results are
 // available or 60 seconds have elapsed.
 func (c *Client) PollTaskResult(taskID string) ([]TaskResult, error) {
-	if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowKomariTaskEcho {
+	if taskEchoEnabled() {
 		postLog.Debug(fmt.Sprintf("Polling for Komari task %s results...", taskID))
 	}
 
@@ -393,7 +401,7 @@ func (c *Client) PollTaskResult(taskID string) ([]TaskResult, error) {
 				return nil, err
 			}
 			if done {
-				if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowKomariTaskEcho {
+				if taskEchoEnabled() {
 					postLog.Info(fmt.Sprintf("Task %s completed with %d results", taskID, len(results)))
 				}
 				return results, nil

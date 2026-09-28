@@ -148,7 +148,7 @@ func (t *TelegramController) handleUpdate(_ context.Context, _ *bot.Bot, update 
 	}
 	msg := update.Message
 
-	if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowTelegramMsg {
+	if cfg := config.Current(); cfg != nil && cfg.System.DebugMode && cfg.Debug.ShowTelegramMsg {
 		raw, _ := json.Marshal(update)
 		postLog.Debug("Telegram update received: " + string(raw))
 	}
@@ -232,7 +232,7 @@ func (t *TelegramController) processCommand(cmd controller.Command) string {
 	// Hand the complete command to the unified processor, which checks group
 	// vs private, trusted groups, admin permissions, and executes it.
 	response, err := controller.GetManager().Trigger(parsed, t.trustedGroupIDs(), t.resolvedAdminList(), t.cfg.ListenMethod)
-	if config.C_globalConfig.System.DebugMode && config.C_globalConfig.Debug.ShowTriggerCmdEcho {
+	if cfg := config.Current(); cfg != nil && cfg.System.DebugMode && cfg.Debug.ShowTriggerCmdEcho {
 		postLog.Debug(fmt.Sprintf("[telegram] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
 	}
 	if err != nil {
@@ -252,7 +252,7 @@ func (t *TelegramController) SendMessage(message controller.Message) error {
 	}
 
 	// Only notify trusted groups and admins whose options allow this message type.
-	if uc := config.C_botUserConfig; uc != nil {
+	if uc := config.BotUsers(); uc != nil {
 		for groupID, opts := range uc.Telegram.TrustedGroups {
 			if !controller.MemberReceives(opts, message.Type) {
 				continue
@@ -275,12 +275,12 @@ func (t *TelegramController) SendStatusChange(change node.StatusChange) error {
 		return nil
 	}
 
-	cfg := config.C_globalConfig
+	cfg := config.Current()
 	params := template.BuildParamsFromStatusChange(change)
 	message := template.Render(cfg.ControllerMessage.ServerStatusChanged, params, t.cfg.Markdown)
 
 	// Only notify trusted groups and admins whose event_status_notify is true.
-	if uc := config.C_botUserConfig; uc != nil {
+	if uc := config.BotUsers(); uc != nil {
 		for groupID, opts := range uc.Telegram.TrustedGroups {
 			if !opts.EventStatusNotify {
 				continue
@@ -303,7 +303,7 @@ func (t *TelegramController) SendServerList(onlineServers, offlineServers string
 		return nil
 	}
 
-	cfg := config.C_globalConfig
+	cfg := config.Current()
 	params := template.BuildParamsFromServerList()
 	message := template.Render(cfg.ControllerMessage.ServerList, params, t.cfg.Markdown)
 
@@ -317,7 +317,7 @@ func (t *TelegramController) SendExecuteResult(serverName, serverUUID, command, 
 		return nil
 	}
 
-	cfg := config.C_globalConfig
+	cfg := config.Current()
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
 	message := template.Render(cfg.ControllerMessage.ServerExecuteResult, params, t.cfg.Markdown)
 
@@ -395,7 +395,7 @@ func (t *TelegramController) resolveUsername(username string) (int64, bool) {
 // adminIDs returns the Telegram admin entries (numeric user ID or @username)
 // from bot_user_config.json.
 func (t *TelegramController) adminIDs() []string {
-	if c := config.C_botUserConfig; c != nil {
+	if c := config.BotUsers(); c != nil {
 		return c.Telegram.Admins.IDs()
 	}
 	return nil
@@ -403,7 +403,7 @@ func (t *TelegramController) adminIDs() []string {
 
 // trustedGroupIDs returns the Telegram trusted group IDs from bot_user_config.json.
 func (t *TelegramController) trustedGroupIDs() []string {
-	if c := config.C_botUserConfig; c != nil {
+	if c := config.BotUsers(); c != nil {
 		return c.Telegram.TrustedGroups.IDs()
 	}
 	return nil

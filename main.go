@@ -201,7 +201,7 @@ func startWebhookServer(cfg *config.Config) {
 
 // initControllers initializes and starts all configured controllers.
 func initControllers() {
-	cfg := config.C_globalConfig
+	cfg := config.Current()
 	mgr := controller.GetManager()
 	if mgr == nil {
 		return

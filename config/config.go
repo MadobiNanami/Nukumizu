@@ -17,7 +17,7 @@ func LoadBotNodeConfig(configPath string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			C_botNodeConfig = cfg
+			botNodeConfig.Store(&cfg)
 			return nil
 		}
 		return fmt.Errorf("failed to read bot node config file: %w", err)
@@ -27,19 +27,17 @@ func LoadBotNodeConfig(configPath string) error {
 			return fmt.Errorf("failed to parse bot node config file: %w", err)
 		}
 	}
-	C_botNodeConfig = cfg
+	botNodeConfig.Store(&cfg)
 	return nil
 }
 
 // NodeStatusNotifyEnabled reports whether the node identified by uuid should
 // broadcast status-change notifications, per bot_node_config.json.
 // enableStatusNotify defaults to true: a node notifies unless its entry
-// explicitly sets the flag to false.
+// explicitly sets the flag to false. A missing configuration (nil map) yields
+// the same default.
 func NodeStatusNotifyEnabled(uuid string) bool {
-	if C_botNodeConfig == nil {
-		return true
-	}
-	opts, ok := C_botNodeConfig[uuid]
+	opts, ok := BotNodes()[uuid]
 	if !ok || opts.EnableStatusNotify == nil {
 		return true
 	}
@@ -146,7 +144,7 @@ func LoadGlobalConfig(configPath string) (*Config, error) {
 		cfg.ControllerMessage.ServerExecuteResult = "Command execute result:\nServer Name: {{ serverName }}\nCommand: {{ command }}\n***Result***\n\n{{ result }}\n\n************\nTime: {{ time }}"
 	}
 
-	C_globalConfig = &cfg
+	globalConfig.Store(&cfg)
 	return &cfg, nil
 }
 
@@ -162,7 +160,7 @@ func LoadBotUserConfig(configPath string) (*BotUserConfig, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse bot user config file: %w", err)
 	}
-	C_botUserConfig = &cfg
+	botUserConfig.Store(&cfg)
 	return &cfg, nil
 }
 
@@ -213,8 +211,9 @@ func SaveBotNodeConfig(configPath string, uuids []string) error {
 
 // IsDebugMode returns whether debug mode is enabled.
 func IsDebugMode() bool {
-	if C_globalConfig == nil {
+	cfg := Current()
+	if cfg == nil {
 		return false
 	}
-	return C_globalConfig.System.DebugMode
+	return cfg.System.DebugMode
 }

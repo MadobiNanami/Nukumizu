@@ -1,6 +1,9 @@
 package config
 
-import "sort"
+import (
+	"sort"
+	"sync/atomic"
+)
 
 // SystemConfig holds system-level configuration.
 type SystemConfig struct {
@@ -136,10 +139,11 @@ type WebhookReceiverConfig struct {
 // GetWebhookEndpoint returns the incoming webhook endpoint registered under the
 // given name, and whether such an endpoint exists.
 func GetWebhookEndpoint(name string) (WebhookEndpointConfig, bool) {
-	if C_globalConfig == nil {
+	cfg := Current()
+	if cfg == nil {
 		return WebhookEndpointConfig{}, false
 	}
-	endpoint, ok := C_globalConfig.Webhook.Endpoints[name]
+	endpoint, ok := cfg.Webhook.Endpoints[name]
 	return endpoint, ok
 }
 
@@ -165,7 +169,19 @@ type Config struct {
 	DBPath            string                  `json:"dbPath"`
 }
 
-var C_globalConfig *Config
+// globalConfig holds the configuration currently in effect. It is replaced as a
+// whole by LoadGlobalConfig — and therefore by every settings update — and never
+// mutated in place, so a reader that loads the pointer always observes a fully
+// initialized Config. Read it through Current rather than caching the result: a
+// cached pointer stops tracking reloads.
+var globalConfig atomic.Pointer[Config]
+
+// Current returns the configuration currently in effect, or nil before the
+// first successful LoadGlobalConfig. It is safe to call from any goroutine, and
+// must be called on every use rather than stored, so the caller sees reloads.
+func Current() *Config {
+	return globalConfig.Load()
+}
 
 // BotUserOptions holds per-member options stored in bot_user_config.json.
 type BotUserOptions struct {
@@ -220,7 +236,16 @@ type BotUserConfig struct {
 	Telegram BotUser_TelegramConfig `json:"telegram"`
 }
 
-var C_botUserConfig *BotUserConfig
+// botUserConfig mirrors bot_user_config.json the same way globalConfig mirrors
+// config.json: replaced wholesale on reload and read through BotUsers.
+var botUserConfig atomic.Pointer[BotUserConfig]
+
+// BotUsers returns the bot user configuration currently in effect, or nil
+// before the first successful LoadBotUserConfig. Like Current it must be called
+// on every use rather than stored.
+func BotUsers() *BotUserConfig {
+	return botUserConfig.Load()
+}
 
 // BotNodeOptions holds per-node options stored in bot_node_config.json. The
 // file is auto-populated by the node tracker for every node Komari reports;
@@ -238,6 +263,18 @@ type BotNodeOptions struct {
 // options.
 type BotNodeMembers map[string]BotNodeOptions
 
-// C_botNodeConfig is the global singleton mirroring bot_node_config.json,
-// populated by LoadBotNodeConfig.
-var C_botNodeConfig BotNodeMembers
+// botNodeConfig mirrors bot_node_config.json, populated by LoadBotNodeConfig.
+// The map is rebuilt rather than mutated on every load, so the pointer can be
+// swapped atomically; read it through BotNodes.
+var botNodeConfig atomic.Pointer[BotNodeMembers]
+
+// BotNodes returns the per-node options currently in effect, or nil before the
+// first LoadBotNodeConfig. Like Current it must be called on every use rather
+// than stored.
+func BotNodes() BotNodeMembers {
+	nodes := botNodeConfig.Load()
+	if nodes == nil {
+		return nil
+	}
+	return *nodes
+}

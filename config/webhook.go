@@ -37,10 +37,11 @@ var webhookEndpointFields = map[string]func(interface{}) bool{
 // configuration.
 func WebhookEndpoints() map[string]WebhookEndpointConfig {
 	endpoints := map[string]WebhookEndpointConfig{}
-	if C_globalConfig == nil {
+	cfg := Current()
+	if cfg == nil {
 		return endpoints
 	}
-	for name, endpoint := range C_globalConfig.Webhook.Endpoints {
+	for name, endpoint := range cfg.Webhook.Endpoints {
 		endpoints[name] = endpoint
 	}
 	return endpoints
@@ -107,14 +108,15 @@ func DeleteWebhookEndpoint(name string) error {
 }
 
 // webhookEndpoint returns the named endpoint held by the loaded configuration.
-// No lock is needed to read it: a reload replaces the whole configuration
-// rather than mutating it in place, and the value is read from whichever
-// version is current.
+// No extra lock is needed to read it: a reload replaces the whole configuration
+// rather than mutating it in place, and Current publishes the replacement
+// atomically, so the value read is always from one complete version.
 func webhookEndpoint(name string) (WebhookEndpointConfig, bool) {
-	if C_globalConfig == nil {
+	cfg := Current()
+	if cfg == nil {
 		return WebhookEndpointConfig{}, false
 	}
-	endpoint, exists := C_globalConfig.Webhook.Endpoints[name]
+	endpoint, exists := cfg.Webhook.Endpoints[name]
 	return endpoint, exists
 }
 

@@ -71,7 +71,7 @@ func (e *EmailController) SendStatusChange(change node.StatusChange) error {
 		return nil
 	}
 
-	cfg := config.C_globalConfig
+	cfg := config.Current()
 	params := template.BuildParamsFromStatusChange(change)
 	body := template.Render(cfg.ControllerMessage.ServerStatusChanged, params, e.cfg.Markdown)
 
@@ -85,7 +85,7 @@ func (e *EmailController) SendServerList(onlineServers, offlineServers string) e
 		return nil
 	}
 
-	cfg := config.C_globalConfig
+	cfg := config.Current()
 	params := template.BuildParamsFromServerList()
 	body := template.Render(cfg.ControllerMessage.ServerList, params, e.cfg.Markdown)
 
@@ -98,7 +98,7 @@ func (e *EmailController) SendExecuteResult(serverName, serverUUID, command, res
 		return nil
 	}
 
-	cfg := config.C_globalConfig
+	cfg := config.Current()
 	params := template.BuildParamsFromExecResult(serverName, serverUUID, command, result)
 	body := template.Render(cfg.ControllerMessage.ServerExecuteResult, params, e.cfg.Markdown)
 

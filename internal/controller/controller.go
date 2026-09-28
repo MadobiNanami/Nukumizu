@@ -144,7 +144,7 @@ func (m *Manager) ShowBotInitMessage() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	cfg := config.C_globalConfig
+	cfg := config.Current()
 	params := template.BuildBotInitializationMsgParams()
 
 	for _, ctrl := range m.controllers {
@@ -176,7 +176,7 @@ func (m *Manager) ShowBotServerList() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	cfg := config.C_globalConfig
+	cfg := config.Current()
 	params := template.BuildParamsFromServerList()
 
 	for _, ctrl := range m.controllers {

@@ -17,6 +17,15 @@ import (
 	"nukumizu-backend/postLog"
 )
 
+// actionLogEnabled reports whether the NapCat HTTP API methods echo each action
+// they send, per the showNapcatAction toggle. Unlike the WebSocket message path
+// in qq.go it deliberately does not also require debugMode: these methods have
+// always logged on this toggle alone, and preserving that is intentional.
+func actionLogEnabled() bool {
+	cfg := config.Current()
+	return cfg != nil && cfg.Debug.ShowNapcatAction
+}
+
 // APIResponse mirrors NapCat's HTTP API response envelope.
 type APIResponse struct {
 	Status  string          `json:"status"`
@@ -155,7 +164,7 @@ func (c *Client) SendMsg(targetType string, targetID int64, msg string, hasAt bo
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	if config.C_globalConfig.Debug.ShowNapcatAction {
+	if actionLogEnabled() {
 		postLog.Debug(fmt.Sprintf("[Napcat] SendMsg -> %s (%s): %s", endpoint, targetType, message))
 	}
 
@@ -176,7 +185,7 @@ func (c *Client) RecallMsg(msgID int64) (*APIResponse, error) {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	if config.C_globalConfig.Debug.ShowNapcatAction {
+	if actionLogEnabled() {
 		postLog.Debug(fmt.Sprintf("[Napcat] RecallMsg -> /delete_msg: %d", msgID))
 	}
 
@@ -190,7 +199,7 @@ func (c *Client) RecallMsg(msgID int64) (*APIResponse, error) {
 
 // GetGroupList retrieves the list of joined groups from NapCat.
 func (c *Client) GetGroupList() (*APIResponse, error) {
-	if config.C_globalConfig.Debug.ShowNapcatAction {
+	if actionLogEnabled() {
 		postLog.Debug("[Napcat] GetGroupList -> /get_group_list")
 	}
 
@@ -211,7 +220,7 @@ func (c *Client) GetGroupInfo(groupID int64) (*APIResponse, error) {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	if config.C_globalConfig.Debug.ShowNapcatAction {
+	if actionLogEnabled() {
 		postLog.Debug(fmt.Sprintf("[Napcat] GetGroupInfo -> /get_group_info: %d", groupID))
 	}
 
@@ -225,7 +234,7 @@ func (c *Client) GetGroupInfo(groupID int64) (*APIResponse, error) {
 
 // GetFriendsList retrieves the friends list from NapCat.
 func (c *Client) GetFriendsList() (*APIResponse, error) {
-	if config.C_globalConfig.Debug.ShowNapcatAction {
+	if actionLogEnabled() {
 		postLog.Debug("[Napcat] GetFriendsList -> /get_friend_list")
 	}
 
