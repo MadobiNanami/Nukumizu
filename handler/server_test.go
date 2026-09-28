@@ -51,13 +51,27 @@ func setupAdminToken() {
 	utils.AddToken("test-admin-token", 1, "admin", "tester")
 }
 
+// decodeResponse decodes a success envelope and returns its data object, which
+// the getInfo and getStatus handlers key by uuid. Responses are wrapped by
+// utils.SendSuccessResponse as {success, message?, data:{...}}, the shape the
+// console reads as `response.data[uuid]` (see frontend/src/api/index.js), so
+// the tests index the returned map by uuid rather than by envelope key.
 func decodeResponse(t *testing.T, w *httptest.ResponseRecorder) map[string]json.RawMessage {
 	t.Helper()
-	var body map[string]json.RawMessage
+	var body struct {
+		Success bool                       `json:"success"`
+		Data    map[string]json.RawMessage `json:"data"`
+	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v; body=%s", err, w.Body.String())
 	}
-	return body
+	if !body.Success {
+		t.Fatalf("response is not a success envelope: %s", w.Body.String())
+	}
+	if body.Data == nil {
+		t.Fatalf("response has no data object: %s", w.Body.String())
+	}
+	return body.Data
 }
 
 func TestServerGetInfoAll(t *testing.T) {
