@@ -6,6 +6,10 @@ bot_node_config.json
 *.exe
 nukumizu-linux-amd64
 
+# Scratch test files dropped in the repo root stay untracked; the real suite
+# lives next to the code it covers (config/, handler/, ...) and is tracked.
+/*test.go
+
 # The built web console. web/embed.go compiles it into the binary, and the
 # build-*.sh / build-*.bat scripts rebuild it before every compile.
 /web/dist/
