@@ -88,6 +88,15 @@ type Controller interface {
 	// IsMarkdown reports whether the channel renders Markdown, per its own
 	// "markdown" setting in config.json.
 	IsMarkdown() bool
+	// Reload applies the current configuration to a running controller, so a
+	// settings update takes effect without a restart. It reads the live
+	// configuration itself and rebuilds whatever it derived from the old one.
+	//
+	// Reload runs on the goroutine serving the settings update while the send
+	// methods may be running on others, so an implementation must not replace
+	// state those methods read without synchronizing (see the atomic pointers in
+	// the notification pipes).
+	Reload()
 	SendStatusChange(change node.StatusChange) error
 	SendServerList(onlineServers, offlineServers string) error
 	SendExecuteResult(serverName, serverUUID, command, result string) error
@@ -132,6 +141,25 @@ func (m *Manager) Register(c Controller) {
 	defer m.mu.Unlock()
 	m.controllers[c.Name()] = c
 	postLog.Info("Controller registered: " + c.Name())
+}
+
+// ReloadAll applies the current configuration to every registered controller,
+// so a settings update reaches the channels without a restart.
+//
+// The controllers are collected under the registry lock and reloaded outside
+// it: a reload can rebuild a client and block on the network, and holding m.mu
+// across that would stall every notification for its duration.
+func (m *Manager) ReloadAll() {
+	m.mu.RLock()
+	controllers := make([]Controller, 0, len(m.controllers))
+	for _, ctrl := range m.controllers {
+		controllers = append(controllers, ctrl)
+	}
+	m.mu.RUnlock()
+
+	for _, ctrl := range controllers {
+		ctrl.Reload()
+	}
 }
 
 // ShowBotInitMessage sends the bot initialization message to all enabled

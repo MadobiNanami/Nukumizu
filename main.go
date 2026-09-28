@@ -58,12 +58,17 @@ func main() {
 	postLog.SetDebugMode(cfg.System.DebugMode)
 	postLog.InitLogBroadcaster()
 
-	// The logger's debug flag is a process-wide setting rather than something
-	// read at every log call, so a settings update has to push the new value
-	// into it. This is the first link in the reload hook chain; the controllers
-	// join it as they gain reload support.
+	// A settings update replaces the configuration in memory; these hooks push
+	// the new values into the state that was derived from the old one. The
+	// logger's debug flag is process-wide rather than read at every log call,
+	// and each controller holds its own copy of its channel settings plus the
+	// clients built from them.
 	config.OnReload(func(updated *config.Config) {
 		postLog.SetDebugMode(updated.System.DebugMode)
+
+		if mgr := controller.GetManager(); mgr != nil {
+			mgr.ReloadAll()
+		}
 	})
 
 	dbPath := cfg.DBPath

@@ -86,6 +86,23 @@ func (q *QQController) IsEnabled() bool {
 	return q.cfg.Enabled
 }
 
+// Reload is not implemented yet for this channel.
+//
+// Everything this controller uses — the NapCat address, port and token — is
+// captured in the client it connected with, and that client's WebSocket
+// listener is stopped through a sync.Once and cannot be re-pointed. Applying a
+// change therefore means stopping the client and building a replacement
+// controller, which lands together with the Telegram one. Until then the
+// divergence is reported rather than ignored, so an edit that needs a restart
+// does not look like it took effect.
+func (q *QQController) Reload() {
+	global := config.Current()
+	if global == nil || q.cfg == global.ControllerMethod.QQ {
+		return
+	}
+	postLog.Warning("QQ (Napcat) settings changed but hot reload is not implemented for this channel yet; restart to apply them")
+}
+
 // IsMarkdown returns whether the channel renders Markdown, per its markdown
 // setting in config.json.
 func (q *QQController) IsMarkdown() bool {
