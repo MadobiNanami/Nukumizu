@@ -1,3 +1,13 @@
+## Ver.0.2.1.6-
+### Features
+- Most of settings now support hot reload when changed
+  - [Network proxy]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/457ea424178b397f5509578d6180da437aaed075")
+  - [Controllers]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/2a5a46a9846c5afe8ac3c66dc42164ddea25c038")
+- [Only log node count when it changed]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/aa7e7f87e17f17ff2f64aa1823a00a291628d4eb")
+
+### Bug Fixes
+- [Resolve the proxy address per request]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/457ea424178b397f5509578d6180da437aaed075")
+
 ## Ver.0.2.0.5-661cf08.pre-release
 ### Features
 - [Enhance security of websocket log system]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/da467c9297e641e2ab9a1889252589503791b7e9")
