@@ -248,7 +248,7 @@ func (c *Client) FetchNodes() ([]NodeInfo, error) {
 		postLog.Warning("Failed to save bot node config: " + err.Error())
 	}
 
-	postLog.Info(fmt.Sprintf("Fetched %d nodes from Komari", len(nodes)))
+	// postLog.Debug(fmt.Sprintf("Fetched %d nodes from Komari", len(nodes)))
 	return nodes, nil
 }
 

@@ -46,7 +46,7 @@ var startupOnlySettings = []string{
 	"dbPath",
 }
 
-// RestartRequiredKeys lists the settings in patch that only take effect at
+// IsRestartRequiredKeys lists the settings in patch that only take effect at
 // startup, as dot-separated paths, in the order startupOnlySettings declares
 // them. Only config.json carries such settings; an update to one of the other
 // files always reports nothing.
@@ -54,7 +54,7 @@ var startupOnlySettings = []string{
 // The write itself succeeds either way — this is advice for the user, not a
 // rejection. The result is never nil, so a caller can put it straight into a
 // JSON response and get [] rather than null.
-func RestartRequiredKeys(settingsType string, patch map[string]interface{}) []string {
+func IsRestartRequiredKeys(settingsType string, patch map[string]interface{}) []string {
 	keys := []string{}
 	if settingsType != SettingGlobal {
 		return keys
@@ -63,7 +63,7 @@ func RestartRequiredKeys(settingsType string, patch map[string]interface{}) []st
 	patched := patchPaths(patch)
 	for _, watched := range startupOnlySettings {
 		for _, path := range patched {
-			if pathsOverlap(path, watched) {
+			if isPathsOverlap(path, watched) {
 				keys = append(keys, watched)
 				break
 			}
@@ -96,12 +96,12 @@ func patchPaths(patch map[string]interface{}) []string {
 	return paths
 }
 
-// pathsOverlap reports whether a patched path and a watched setting can affect
+// isPathsOverlap reports whether a patched path and a watched setting can affect
 // each other: they are the same key, the patch names something inside the
 // watched setting, or the patch names a section the watched setting lives in.
 // The last case matters because a patch may replace a whole section, which
 // changes every key under it.
-func pathsOverlap(patched, watched string) bool {
+func isPathsOverlap(patched, watched string) bool {
 	return patched == watched ||
 		strings.HasPrefix(patched, watched+".") ||
 		strings.HasPrefix(watched, patched+".")

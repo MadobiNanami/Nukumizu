@@ -260,10 +260,14 @@ func startBackgroundTasks(_ *config.Config) {
 			if client == nil {
 				continue
 			}
+			orgNodeCount := node.GetTracker().GetNodeCount()
 			nodes, err := client.FetchNodes()
 			if err != nil {
 				postLog.Warning("Failed to refresh node list: " + err.Error())
 				continue
+			}
+			if node.GetTracker().GetNodeCount() != orgNodeCount {
+				postLog.Info(fmt.Sprintf("Refreshed node list: %d nodes", len(nodes)))
 			}
 			tracker := node.GetTracker()
 			if tracker != nil {

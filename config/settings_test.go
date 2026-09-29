@@ -271,7 +271,7 @@ func TestRestartRequiredKeys(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := RestartRequiredKeys(tc.settingsType, tc.patch)
+			got := IsRestartRequiredKeys(tc.settingsType, tc.patch)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("RestartRequiredKeys() = %v, want %v", got, tc.want)
 			}
@@ -287,7 +287,7 @@ func TestRestartRequiredKeys(t *testing.T) {
 func TestRestartRequiredKeysIsAdvisory(t *testing.T) {
 	writeTempConfig(t, &global.ConfigPath.Global, `{"system":{"listenPort":"8080"}}`)
 
-	keys := RestartRequiredKeys(SettingGlobal, map[string]interface{}{
+	keys := IsRestartRequiredKeys(SettingGlobal, map[string]interface{}{
 		"system": map[string]interface{}{"listenPort": "9090"},
 	})
 	if len(keys) != 1 {

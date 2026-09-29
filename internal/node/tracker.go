@@ -107,6 +107,7 @@ type StatusChangeCallback func(change StatusChange)
 // All methods are thread-safe.
 type Tracker struct {
 	mu              sync.RWMutex
+	count 			int
 	nodes           map[string]*Node  // uuid → Node
 	uuidToName      map[string]string // uuid → name (from node list)
 	onlineSet       map[string]bool   // which uuids are currently online
@@ -161,6 +162,13 @@ func (t *Tracker) fireCallbacks(change StatusChange) {
 	}
 }
 
+// GetNodeCount returns the total number of nodes in the tracker.
+func (t *Tracker) GetNodeCount() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.count
+}
+
 // UpdateNodeList replaces the full node list and updates each node's name and
 // static Info metadata. entries maps UUID → node metadata from the Komari node
 // list.
@@ -174,6 +182,8 @@ func (t *Tracker) UpdateNodeList(entries map[string]NodeListEntry) {
 	for uuid := range entries {
 		t.knownUUIDs[uuid] = true
 	}
+
+	t.count = len(entries)
 
 	t.uuidToName = make(map[string]string, len(entries))
 	for uuid, entry := range entries {

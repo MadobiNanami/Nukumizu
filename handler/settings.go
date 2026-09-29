@@ -88,6 +88,6 @@ func SettingsSetHandler(w http.ResponseWriter, r *http.Request) {
 	// it changed will not be live until the program is restarted.
 	utils.SendSuccessResponse(w, "settings updated successfully", map[string]interface{}{
 		"type":            settingsType,
-		"restartRequired": config.RestartRequiredKeys(settingsType, patch),
+		"restartRequired": config.IsRestartRequiredKeys(settingsType, patch),
 	})
 }
