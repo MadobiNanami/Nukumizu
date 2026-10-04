@@ -1,4 +1,4 @@
-## Ver.0.2.1.6-
+## Ver.0.2.1.6-d06d0bc.pre-release
 ### Features
 - Most of settings now support hot reload when changed
   - [Network proxy]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/457ea424178b397f5509578d6180da437aaed075")
