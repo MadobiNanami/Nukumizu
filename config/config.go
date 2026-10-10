@@ -65,15 +65,15 @@ func LoadGlobalConfig(configPath string) (*Config, error) {
 		cfg.System.ListenPort = "8080"
 	}
 
-	// Apply defaults for QQ controller.
-	if cfg.ControllerMethod.QQ.ListenMethod == "" {
-		cfg.ControllerMethod.QQ.ListenMethod = "global"
+	// Apply defaults for QQ_OneBot controller.
+	if cfg.ControllerMethod.QQ_OneBot.ListenMethod == "" {
+		cfg.ControllerMethod.QQ_OneBot.ListenMethod = "global"
 	}
-	if cfg.ControllerMethod.QQ.NapcatAddr == "" {
-		cfg.ControllerMethod.QQ.NapcatAddr = "127.0.0.1"
+	if cfg.ControllerMethod.QQ_OneBot.OneBotAddr == "" {
+		cfg.ControllerMethod.QQ_OneBot.OneBotAddr = "127.0.0.1"
 	}
-	if cfg.ControllerMethod.QQ.NapcatPort == "" {
-		cfg.ControllerMethod.QQ.NapcatPort = "3000"
+	if cfg.ControllerMethod.QQ_OneBot.OneBotPort == "" {
+		cfg.ControllerMethod.QQ_OneBot.OneBotPort = "3000"
 	}
 
 	// Apply defaults for Telegram controller.

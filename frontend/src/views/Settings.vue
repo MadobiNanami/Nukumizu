@@ -26,12 +26,12 @@ const sections = [
         hint: 'Per-module verbosity for the bot pipes.',
         root: ['debug'],
         fields: [
-            { key: 'showNapcatMsg', type: 'bool', label: 'NapCat messages' },
-            { key: 'showNapcatAction', type: 'bool', label: 'NapCat actions' },
+            { key: 'showOneBotMsg', type: 'bool', label: 'OneBot messages' },
+            { key: 'showOneBotAction', type: 'bool', label: 'OneBot actions' },
             { key: 'showTelegramMsg', type: 'bool', label: 'Telegram messages' },
             { key: 'showTriggerCmdEcho', type: 'bool', label: 'Trigger command echo' },
             { key: 'showKomariTaskEcho', type: 'bool', label: 'Komari task echo' },
-            { key: 'napcatIgnoreSelfMsg', type: 'bool', label: 'Ignore NapCat self messages' }
+            { key: 'onebotIgnoreSelfMsg', type: 'bool', label: 'Ignore OneBot self messages' }
         ]
     },
     {
@@ -60,16 +60,16 @@ const sections = [
         ]
     },
     {
-        id: 'qq',
-        title: 'QQ controller (NapCat)',
-        root: ['controllerMethod', 'qq(napcat)'],
+        id: 'qq_onebot',
+        title: 'QQ controller (OneBot)',
+        root: ['controllerMethod', 'qq_onebot'],
         fields: [
             { key: 'enabled', type: 'bool', label: 'Enabled' },
             { key: 'markdown', type: 'bool', label: 'Markdown', help: 'Send the formatted variant of the templates (code blocks, inline code).' },
             { key: 'networkUseProxy', type: 'bool', label: 'Use network proxy' },
-            { key: 'napcatAddr', type: 'text', label: 'NapCat address' },
-            { key: 'napcatPort', type: 'text', label: 'NapCat port' },
-            { key: 'napcatToken', type: 'password', label: 'NapCat token' },
+            { key: 'oneBotAddr', type: 'text', label: 'OneBot address' },
+            { key: 'oneBotPort', type: 'text', label: 'OneBot port' },
+            { key: 'oneBotToken', type: 'password', label: 'OneBot token' },
             { key: 'botQQID', type: 'number', label: 'Bot QQ ID' },
             { key: 'listenMethod', type: 'select', label: 'Listen method', options: ['global', 'at'] }
         ]

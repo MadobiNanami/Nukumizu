@@ -97,7 +97,7 @@ func TestReplaceAllInstallsAndStarts(t *testing.T) {
 }
 
 // TestReplaceAllStopsTheOutgoingSet is the invariant the rebuild relies on: the
-// old controllers must be shut down, or a rebuilt NapCat or Telegram controller
+// old controllers must be shut down, or a rebuilt onebot or Telegram controller
 // would leave its previous connection running.
 func TestReplaceAllStopsTheOutgoingSet(t *testing.T) {
 	m := newTestManager()

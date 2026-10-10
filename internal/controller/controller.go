@@ -27,7 +27,7 @@ type Command struct {
 
 // Message represents a message to be sent by a controller.
 type Message struct {
-	Source  string // The source pipe (e.g., "telegram", "qq", "napcat")
+	Source  string // The source pipe (e.g., "telegram", "qq", "onebot")
 	Content string // The message content
 	ChatID  int64  // Chat/group ID where the message should be sent
 	Type    string // Message type (see MessageType*), used for per-member opt-outs
@@ -100,7 +100,7 @@ type Controller interface {
 
 // BotController is implemented by controllers that act as chat bots and can
 // deliver arbitrary messages, such as the bot initialization message on startup.
-// Only bot-type pipes (QQ/NapCat, Telegram) implement it; notification-only
+// Only bot-type pipes (QQ_OneBot, Telegram) implement it; notification-only
 // pipes (email, ntfy, webhook) do not.
 type BotController interface {
 	Controller
@@ -140,7 +140,7 @@ func GetManager() *Manager {
 //
 // Controllers are rebuilt wholesale rather than reconfigured in place: each one
 // reads its settings into fields at construction, and two of them own
-// connections that cannot be re-pointed (the NapCat WebSocket listener is
+// connections that cannot be re-pointed (the OneBot WebSocket listener is
 // stopped through a sync.Once, the Telegram polling context is created with the
 // controller). Replacing the set keeps every channel on the same footing.
 func (m *Manager) NeedsRebuild(next config.ControllerMethodConfig) bool {
@@ -183,7 +183,7 @@ func (m *Manager) ReplaceAll(next []Controller, method config.ControllerMethodCo
 	}
 
 	// Start off the calling goroutine, the way startup does: Telegram's getMe
-	// and the NapCat WebSocket handshake would otherwise hold the settings
+	// and the OneBot WebSocket handshake would otherwise hold the settings
 	// request open for as long as they take. The new controllers are already
 	// routable, and each one can send before Start returns.
 	for _, ctrl := range next {
@@ -201,7 +201,7 @@ func (m *Manager) ReplaceAll(next []Controller, method config.ControllerMethodCo
 }
 
 // ShowBotInitMessage sends the bot initialization message to all enabled
-// bot controllers (QQ/NapCat and Telegram). Notification-only pipes that do
+// bot controllers (QQ_OneBot and Telegram). Notification-only pipes that do
 // not implement BotController are skipped. The message is typed
 // MessageTypeBotStarted so each controller can honor its members' per-recipient
 // EventBotStarted opt-out. It is rendered once per controller because the

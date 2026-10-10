@@ -1,4 +1,4 @@
-package qq_napcat
+package qq_onebot
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 	"nukumizu-backend/postLog"
 )
 
-// oneBotEvent mirrors a OneBot 11 event pushed over the NapCat WebSocket.
+// oneBotEvent mirrors a OneBot 11 event pushed over the OneBot WebSocket.
 // Only "message" events are handled; notice/request/meta_event are ignored.
 type oneBotEvent struct {
 	PostType    string          `json:"post_type"`    // Identifies "message", "notice", "request", or "meta_event"
@@ -29,24 +29,24 @@ type oneBotEvent struct {
 	SubType string `json:"sub_type"` // The subtype of the message, e.g., "normal", "anonymous", etc.
 }
 
-// QQController handles QQ Bot interactions by connecting directly to NapCat.
+// QQController handles QQ Bot interactions by connecting directly to OneBot.
 type QQController struct {
-	cfg          config.QQConfig
-	napcatClient *Client
+	cfg          config.OneBotConfig
+	onebotClient *Client
 }
 
-// NewQQController creates a new QQ (Napcat) controller.
-func NewQQController(cfg config.QQConfig) *QQController {
+// NewQQController creates a new QQ (OneBot) controller.
+func NewQQController(cfg config.OneBotConfig) *QQController {
 	q := &QQController{cfg: cfg}
 	if cfg.Enabled {
-		q.napcatClient = NewClient(cfg.NapcatAddr, cfg.NapcatPort, cfg.NapcatToken, cfg.NetworkUseProxy)
+		q.onebotClient = NewClient(cfg.OneBotAddr, cfg.OneBotPort, cfg.OneBotToken, cfg.NetworkUseProxy)
 	}
 	return q
 }
 
 // Name returns the controller name.
 func (q *QQController) Name() string {
-	return "qq(napcat)"
+	return "qq_onebot"
 }
 
 // Start initializes the QQ controller and starts the NapCat WebSocket listener.
@@ -55,19 +55,19 @@ func (q *QQController) Start() error {
 		// postLog.Info("QQ (Napcat) controller is disabled")
 		return nil
 	}
-	if q.napcatClient == nil {
-		postLog.Warning("QQ (Napcat) controller enabled but NapCat client is nil")
+	if q.onebotClient == nil {
+		postLog.Warning("QQ (OneBot) controller enabled but OneBot client is nil")
 		return nil
 	}
 
-	postLog.Info("QQ (Napcat) controller started, connecting to NapCat WebSocket...")
+	postLog.Info("QQ (OneBot) controller started, connecting to OneBot WebSocket...")
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				postLog.Error(fmt.Sprintf("Napcat WS listener panic recovered: %v", r))
+				postLog.Error(fmt.Sprintf("OneBot WS listener panic recovered: %v", r))
 			}
 		}()
-		q.napcatClient.Listen(q.handleNapcatEvent)
+		q.onebotClient.Listen(q.handleOneBotEvent)
 	}()
 
 	return nil
@@ -75,10 +75,10 @@ func (q *QQController) Start() error {
 
 // Stop shuts down the QQ controller and its WebSocket listener.
 func (q *QQController) Stop() {
-	if q.napcatClient != nil {
-		q.napcatClient.Stop()
+	if q.onebotClient != nil {
+		q.onebotClient.Stop()
 	}
-	postLog.Info("QQ (Napcat) controller stopped")
+	postLog.Info("QQ (OneBot) controller stopped")
 }
 
 // IsEnabled returns whether the controller is enabled.
@@ -92,11 +92,11 @@ func (q *QQController) IsMarkdown() bool {
 	return q.cfg.Markdown
 }
 
-// handleNapcatEvent processes a raw OneBot event received from the NapCat WebSocket.
-func (q *QQController) handleNapcatEvent(raw []byte) {
+// handleOneBotEvent processes a raw OneBot event received from the OneBot WebSocket.
+func (q *QQController) handleOneBotEvent(raw []byte) {
 	var ev oneBotEvent
 	if err := json.Unmarshal(raw, &ev); err != nil {
-		postLog.Debug("Failed to parse NapCat WS event: " + err.Error())
+		postLog.Debug("Failed to parse OneBot WS event: " + err.Error())
 		return
 	}
 
@@ -108,16 +108,16 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 		return
 	}
 	debugMode := cfg.System.DebugMode
-	showAction := debugMode && cfg.Debug.ShowNapcatAction
+	showAction := debugMode && cfg.Debug.ShowOneBotAction
 
-	if debugMode && cfg.Debug.ShowNapcatMsg {
-		postLog.Debug("Napcat WS event received: " + string(raw))
+	if debugMode && cfg.Debug.ShowOneBotMsg {
+		postLog.Debug("OneBot WS event received: " + string(raw))
 	}
 
 	// Only handle message events; ignore notice/request/meta_event.
 	if ev.PostType != "message" {
 		if showAction {
-			postLog.Debug("Ignoring Napcat WS event: " + string(raw))
+			postLog.Debug("Ignoring OneBot WS event: " + string(raw))
 		}
 		return
 	}
@@ -126,9 +126,9 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 	if q.isSelfMessage(ev) && !debugMode {
 		return
 	}
-	if q.isSelfMessage(ev) && debugMode && cfg.Debug.NapcatIgnoreSelfMsg {
+	if q.isSelfMessage(ev) && debugMode && cfg.Debug.OneBotIgnoreSelfMsg {
 		if showAction {
-			postLog.Debug("Ignoring Napcat WS self message: " + string(raw))
+			postLog.Debug("Ignoring OneBot WS self message: " + string(raw))
 		}
 		return
 	}
@@ -149,19 +149,19 @@ func (q *QQController) handleNapcatEvent(raw []byte) {
 	response := q.processCommand(cmd)
 	if response == "" {
 		if showAction {
-			postLog.Debug("Napcat WS command discarded: " + string(raw))
+			postLog.Debug("OneBot WS command discarded: " + string(raw))
 		}
 		return
 	}
 
 	// Reply in the same chat.
 	if ev.MessageType == "private" {
-		if _, err := q.napcatClient.SendMsg("private", ev.UserID, response, false, 0); err != nil {
-			postLog.Warning("Failed to send NapCat private reply: " + err.Error())
+		if _, err := q.onebotClient.SendMsg("private", ev.UserID, response, false, 0); err != nil {
+			postLog.Warning("Failed to send OneBot private reply: " + err.Error())
 		}
 	} else {
-		if _, err := q.napcatClient.SendMsg("group", ev.GroupID, response, false, 0); err != nil {
-			postLog.Warning("Failed to send NapCat group reply: " + err.Error())
+		if _, err := q.onebotClient.SendMsg("group", ev.GroupID, response, false, 0); err != nil {
+			postLog.Warning("Failed to send OneBot group reply: " + err.Error())
 		}
 	}
 }
@@ -179,8 +179,8 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 	if q.cfg.ListenMethod == "at" {
 		atMention := fmt.Sprintf("[CQ:at,qq=%d]", q.cfg.BotQQID)
 		if !strings.Contains(text, atMention) {
-			if cfg != nil && cfg.System.DebugMode && cfg.Debug.ShowNapcatAction {
-				postLog.Debug("Napcat WS message ignored (no @mention): " + text)
+			if cfg != nil && cfg.System.DebugMode && cfg.Debug.ShowOneBotAction {
+				postLog.Debug("OneBot WS message ignored (no @mention): " + text)
 			}
 			return "" // Not mentioned, ignore.
 		}
@@ -202,10 +202,10 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 	// vs private, trusted groups, admin permissions, and executes it.
 	response, err := controller.GetManager().Trigger(parsed, q.trustedGroupIDs(), q.adminIDs(), q.cfg.ListenMethod)
 	if cfg != nil && cfg.System.DebugMode && cfg.Debug.ShowTriggerCmdEcho {
-		postLog.Debug(fmt.Sprintf("[qq_napcat] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
+		postLog.Debug(fmt.Sprintf("[qq_onebot] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
 	}
 	if err != nil {
-		postLog.Error("Napcat command processing failed: " + err.Error())
+		postLog.Error("OneBot command processing failed: " + err.Error())
 		return ""
 	}
 	return response
@@ -341,8 +341,8 @@ func (q *QQController) SendAlert(alert controller.Alert) error {
 }
 
 func (q *QQController) sendGroupMessage(groupID string, message string) {
-	if q.napcatClient == nil {
-		postLog.Warning("Cannot send QQ group message: NapCat client not initialized")
+	if q.onebotClient == nil {
+		postLog.Warning("Cannot send QQ group message: OneBot client not initialized")
 		return
 	}
 
@@ -352,14 +352,14 @@ func (q *QQController) sendGroupMessage(groupID string, message string) {
 		return
 	}
 
-	if _, err := q.napcatClient.SendMsg("group", groupIDInt, message, false, 0); err != nil {
+	if _, err := q.onebotClient.SendMsg("group", groupIDInt, message, false, 0); err != nil {
 		postLog.Warning(fmt.Sprintf("Failed to send QQ group message to %s: %v", groupID, err))
 	}
 }
 
 func (q *QQController) sendPrivateMessage(userID string, message string) {
-	if q.napcatClient == nil {
-		postLog.Warning("Cannot send QQ private message: NapCat client not initialized")
+	if q.onebotClient == nil {
+		postLog.Warning("Cannot send QQ private message: OneBot client not initialized")
 		return
 	}
 
@@ -369,7 +369,7 @@ func (q *QQController) sendPrivateMessage(userID string, message string) {
 		return
 	}
 
-	if _, err := q.napcatClient.SendMsg("private", userIDInt, message, false, 0); err != nil {
+	if _, err := q.onebotClient.SendMsg("private", userIDInt, message, false, 0); err != nil {
 		postLog.Warning(fmt.Sprintf("Failed to send QQ private message to %s: %v", userID, err))
 	}
 }

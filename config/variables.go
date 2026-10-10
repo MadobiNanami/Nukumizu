@@ -15,12 +15,12 @@ type SystemConfig struct {
 
 // DebugConfig holds debug-level configuration.
 type DebugConfig struct {
-	ShowNapcatMsg       bool `json:"showNapcatMsg"`
-	ShowNapcatAction    bool `json:"showNapcatAction"`
+	ShowOneBotMsg       bool `json:"showOneBotMsg"`
+	ShowOneBotAction    bool `json:"showOneBotAction"`
 	ShowTelegramMsg     bool `json:"showTelegramMsg"`
 	ShowTriggerCmdEcho  bool `json:"showTriggerCmdEcho"`
 	ShowKomariTaskEcho  bool `json:"showKomariTaskEcho"`
-	NapcatIgnoreSelfMsg bool `json:"napcatIgnoreSelfMsg"`
+	OneBotIgnoreSelfMsg bool `json:"oneBotIgnoreSelfMsg"`
 }
 
 // KomariAccount holds Komari login credentials.
@@ -35,14 +35,14 @@ type KomariConfig struct {
 	Account      KomariAccount `json:"account"`
 }
 
-// QQConfig holds QQ (Napcat) Bot controller configuration.
-type QQConfig struct {
+// QQConfig holds QQ (OneBot) Bot controller configuration.
+type OneBotConfig struct {
 	Markdown     	bool   `json:"markdown"`
 	Enabled         bool   `json:"enabled"`
 	NetworkUseProxy bool   `json:"networkUseProxy"`
-	NapcatAddr      string `json:"napcatAddr"`
-	NapcatPort      string `json:"napcatPort"`
-	NapcatToken     string `json:"napcatToken"`
+	OneBotAddr      string `json:"oneBotAddr"`
+	OneBotPort      string `json:"oneBotPort"`
+	OneBotToken     string `json:"oneBotToken"`
 	BotQQID         int64  `json:"botQQID"`
 	ListenMethod    string `json:"listenMethod"`
 }
@@ -96,11 +96,11 @@ type WebhookConfig struct {
 
 // ControllerMethodConfig holds all controller method configurations.
 type ControllerMethodConfig struct {
-	QQ       QQConfig       `json:"qq(napcat)"`
-	Telegram TelegramConfig `json:"telegram"`
-	Email    EmailConfig    `json:"email"`
-	Ntfy     NtfyConfig     `json:"ntfy"`
-	Webhook  WebhookConfig  `json:"webhook"`
+	QQ_OneBot   OneBotConfig   `json:"qq_onebot"`
+	Telegram 	TelegramConfig `json:"telegram"`
+	Email    	EmailConfig    `json:"email"`
+	Ntfy     	NtfyConfig     `json:"ntfy"`
+	Webhook  	WebhookConfig  `json:"webhook"`
 }
 
 // WebhookEndpointConfig holds a single incoming webhook endpoint. Endpoints are
@@ -119,7 +119,7 @@ type WebhookEndpointConfig struct {
 	Token string `json:"token"`
 
 	// NotifyPipes lists the notification channels the alert is delivered to, by
-	// controller name (e.g. "qq(napcat)", "telegram", "email", "ntfy",
+	// controller name (e.g. "qq(onebot)", "telegram", "email", "ntfy",
 	// "webhook").
 	NotifyPipes []string `json:"notifyPipes"`
 }
@@ -216,7 +216,7 @@ func (m BotUserMembers) IDs() []string {
 	return ids
 }
 
-// BotUser_QQConfig holds the admins and trusted groups for the QQ (Napcat) bot.
+// BotUser_QQConfig holds the admins and trusted groups for the QQ (OneBot) bot.
 type BotUser_QQConfig struct {
 	Admins        BotUserMembers `json:"admins"`
 	TrustedGroups BotUserMembers `json:"trustedGroups"`
@@ -232,7 +232,7 @@ type BotUser_TelegramConfig struct {
 // and trusted groups (chat targets) for each bot channel separately from the
 // main config.json.
 type BotUserConfig struct {
-	QQ       BotUser_QQConfig       `json:"qq(napcat)"`
+	QQ       BotUser_QQConfig       `json:"qq(onebot)"`
 	Telegram BotUser_TelegramConfig `json:"telegram"`
 }
 

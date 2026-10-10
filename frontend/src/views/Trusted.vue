@@ -6,7 +6,7 @@ import Toggle from '../components/Toggle.vue';
 import Modal from '../components/Modal.vue';
 
 const CHANNELS = [
-    { key: 'qq(napcat)', label: 'QQ (NapCat)', hint: 'Members are identified by QQ number / group number' },
+    { key: 'qq_onebot', label: 'QQ (OneBot)', hint: 'Members are identified by QQ number / group number' },
     { key: 'telegram', label: 'Telegram', hint: 'Members are identified by @username or numeric ID / group ID' }
 ];
 

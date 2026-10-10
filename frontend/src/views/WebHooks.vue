@@ -10,7 +10,7 @@ import Modal from '../components/Modal.vue';
 // controller names in config.json (controllerMethod.*), which is exactly what
 // the backend matches notifyPipes against.
 const CHANNELS = [
-    { key: 'qq(napcat)', label: 'QQ' },
+    { key: 'qq_onebot', label: 'QQ_OneBot' },
     { key: 'telegram', label: 'Telegram' },
     { key: 'email', label: 'Email' },
     { key: 'ntfy', label: 'ntfy' },

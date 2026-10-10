@@ -14,7 +14,7 @@ import (
 	"nukumizu-backend/global"
 	"nukumizu-backend/internal/controller"
 	"nukumizu-backend/internal/controller/pipes"
-	"nukumizu-backend/internal/controller/pipes/qq_napcat"
+	"nukumizu-backend/internal/controller/pipes/qq_onebot"
 	"nukumizu-backend/internal/controller/pipes/telegram"
 	"nukumizu-backend/internal/komari"
 	"nukumizu-backend/internal/node"
@@ -72,7 +72,7 @@ func main() {
 		}
 
 		// Controller settings changed. Each controller reads its settings into
-		// fields when it is built, and the NapCat and Telegram ones own
+		// fields when it is built, and the OneBot and Telegram ones own
 		// connections that cannot be re-pointed, so the change is applied by
 		// replacing the whole set rather than reconfiguring it in place.
 		postLog.Info("Controller settings changed; rebuilding every channel")
@@ -131,7 +131,7 @@ func main() {
 	initControllers()
 
 	// Send the bot initialization message to all enabled bot controllers
-	// (QQ_NapCat, Telegram), then the server list right after it once the
+	// (QQ_OneBot, Telegram), then the server list right after it once the
 	// initial status refresh has completed so the list reflects the real
 	// online/offline state.
 	if mgr := controller.GetManager(); mgr != nil {
@@ -226,7 +226,7 @@ func startWebhookServer(cfg *config.Config) {
 // own connections that cannot be re-pointed.
 func buildControllers(cfg *config.Config) []controller.Controller {
 	return []controller.Controller{
-		qq_napcat.NewQQController(cfg.ControllerMethod.QQ),
+		qq_onebot.NewQQController(cfg.ControllerMethod.QQ_OneBot),
 		telegram.NewTelegramController(cfg.ControllerMethod.Telegram),
 		pipes.NewEmailController(cfg.ControllerMethod.Email),
 		pipes.NewNtfyController(cfg.ControllerMethod.Ntfy),
