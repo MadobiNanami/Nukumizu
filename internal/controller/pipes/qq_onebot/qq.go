@@ -56,15 +56,15 @@ func (q *QQController) Start() error {
 		return nil
 	}
 	if q.onebotClient == nil {
-		postLog.Warning("QQ (OneBot) controller enabled but OneBot client is nil")
+		postLog.Warning("[qq_onebot] QQ (OneBot) controller enabled but OneBot client is nil")
 		return nil
 	}
 
-	postLog.Info("QQ (OneBot) controller started, connecting to OneBot WebSocket...")
+	postLog.Info("[qq_onebot] QQ (OneBot) controller started, connecting to OneBot WebSocket...")
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				postLog.Error(fmt.Sprintf("OneBot WS listener panic recovered: %v", r))
+				postLog.Error("[qq_onebot] OneBot WS listener panic recovered: " + fmt.Sprintf("%v", r))
 			}
 		}()
 		q.onebotClient.Listen(q.handleOneBotEvent)
@@ -78,7 +78,7 @@ func (q *QQController) Stop() {
 	if q.onebotClient != nil {
 		q.onebotClient.Stop()
 	}
-	postLog.Info("QQ (OneBot) controller stopped")
+	postLog.Info("[qq_onebot] QQ (OneBot) controller stopped")
 }
 
 // IsEnabled returns whether the controller is enabled.
@@ -96,7 +96,7 @@ func (q *QQController) IsMarkdown() bool {
 func (q *QQController) handleOneBotEvent(raw []byte) {
 	var ev oneBotEvent
 	if err := json.Unmarshal(raw, &ev); err != nil {
-		postLog.Debug("Failed to parse OneBot WS event: " + err.Error())
+		postLog.Debug("[qq_onebot] Failed to parse OneBot WS event: " + err.Error())
 		return
 	}
 
@@ -111,13 +111,13 @@ func (q *QQController) handleOneBotEvent(raw []byte) {
 	showAction := debugMode && cfg.Debug.ShowOneBotAction
 
 	if debugMode && cfg.Debug.ShowOneBotMsg {
-		postLog.Debug("OneBot WS event received: " + string(raw))
+		postLog.Debug("[qq_onebot] OneBot WS event received: " + string(raw))
 	}
 
 	// Only handle message events; ignore notice/request/meta_event.
 	if ev.PostType != "message" {
 		if showAction {
-			postLog.Debug("Ignoring OneBot WS event: " + string(raw))
+			postLog.Debug("[qq_onebot] Ignoring OneBot WS event: " + string(raw))
 		}
 		return
 	}
@@ -128,7 +128,7 @@ func (q *QQController) handleOneBotEvent(raw []byte) {
 	}
 	if q.isSelfMessage(ev) && debugMode && cfg.Debug.OneBotIgnoreSelfMsg {
 		if showAction {
-			postLog.Debug("Ignoring OneBot WS self message: " + string(raw))
+			postLog.Debug("[qq_onebot] Ignoring OneBot WS self message: " + string(raw))
 		}
 		return
 	}
@@ -149,7 +149,7 @@ func (q *QQController) handleOneBotEvent(raw []byte) {
 	response := q.processCommand(cmd)
 	if response == "" {
 		if showAction {
-			postLog.Debug("OneBot WS command discarded: " + string(raw))
+			postLog.Debug("[qq_onebot] OneBot WS command discarded: " + string(raw))
 		}
 		return
 	}
@@ -157,11 +157,11 @@ func (q *QQController) handleOneBotEvent(raw []byte) {
 	// Reply in the same chat.
 	if ev.MessageType == "private" {
 		if _, err := q.onebotClient.SendMsg("private", ev.UserID, response, false, 0); err != nil {
-			postLog.Warning("Failed to send OneBot private reply: " + err.Error())
+			postLog.Warning("[qq_onebot] Failed to send OneBot private reply: " + err.Error())
 		}
 	} else {
 		if _, err := q.onebotClient.SendMsg("group", ev.GroupID, response, false, 0); err != nil {
-			postLog.Warning("Failed to send OneBot group reply: " + err.Error())
+			postLog.Warning("[qq_onebot] Failed to send OneBot group reply: " + err.Error())
 		}
 	}
 }
@@ -180,7 +180,7 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 		atMention := fmt.Sprintf("[CQ:at,qq=%d]", q.cfg.BotQQID)
 		if !strings.Contains(text, atMention) {
 			if cfg != nil && cfg.System.DebugMode && cfg.Debug.ShowOneBotAction {
-				postLog.Debug("OneBot WS message ignored (no @mention): " + text)
+				postLog.Debug("[qq_onebot] OneBot WS message ignored (no @mention): " + text)
 			}
 			return "" // Not mentioned, ignore.
 		}
@@ -205,7 +205,7 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 		postLog.Debug(fmt.Sprintf("[qq_onebot] triggered command: \"/%s\" with args: \"%s\" from chatID: %d and senderID: %d", parsed.Command, strings.Join(parsed.Args, ", "), cmd.ChatID, cmd.SenderID))
 	}
 	if err != nil {
-		postLog.Error("OneBot command processing failed: " + err.Error())
+		postLog.Error("[qq_onebot] OneBot command processing failed: " + err.Error())
 		return ""
 	}
 	return response
@@ -342,34 +342,34 @@ func (q *QQController) SendAlert(alert controller.Alert) error {
 
 func (q *QQController) sendGroupMessage(groupID string, message string) {
 	if q.onebotClient == nil {
-		postLog.Warning("Cannot send QQ group message: OneBot client not initialized")
+		postLog.Warning("[qq_onebot] Cannot send QQ group message: OneBot client not initialized")
 		return
 	}
 
 	var groupIDInt int64
 	if _, err := fmt.Sscanf(groupID, "%d", &groupIDInt); err != nil || groupIDInt == 0 {
-		postLog.Warning(fmt.Sprintf("Invalid QQ group ID: %s", groupID))
+		postLog.Warning("[qq_onebot] Invalid QQ group ID: " + groupID)
 		return
 	}
 
 	if _, err := q.onebotClient.SendMsg("group", groupIDInt, message, false, 0); err != nil {
-		postLog.Warning(fmt.Sprintf("Failed to send QQ group message to %s: %v", groupID, err))
+		postLog.Warning("[qq_onebot] Failed to send QQ group message to " + groupID + ": " + err.Error())
 	}
 }
 
 func (q *QQController) sendPrivateMessage(userID string, message string) {
 	if q.onebotClient == nil {
-		postLog.Warning("Cannot send QQ private message: OneBot client not initialized")
+		postLog.Warning("[qq_onebot] Cannot send QQ private message: OneBot client not initialized")
 		return
 	}
 
 	var userIDInt int64
 	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil || userIDInt == 0 {
-		postLog.Warning(fmt.Sprintf("Invalid QQ user ID: %s", userID))
+		postLog.Warning("[qq_onebot] Invalid QQ user ID: " + userID)
 		return
 	}
 
 	if _, err := q.onebotClient.SendMsg("private", userIDInt, message, false, 0); err != nil {
-		postLog.Warning(fmt.Sprintf("Failed to send QQ private message to %s: %v", userID, err))
+		postLog.Warning("[qq_onebot] Failed to send QQ private message to " + userID + ": " + err.Error())
 	}
 }

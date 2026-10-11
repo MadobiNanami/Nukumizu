@@ -165,7 +165,7 @@ func (c *Client) SendMsg(targetType string, targetID int64, msg string, hasAt bo
 	}
 
 	if actionLogEnabled() {
-		postLog.Debug(fmt.Sprintf("[OneBot] SendMsg -> %s (%s): %s", endpoint, targetType, message))
+		postLog.Debug(fmt.Sprintf("[qq_onebot] SendMsg -> %s (%s): %s", endpoint, targetType, message))
 	}
 
 	respBody, err := c.sendRequest(http.MethodPost, endpoint, reqBody)
@@ -186,7 +186,7 @@ func (c *Client) RecallMsg(msgID int64) (*APIResponse, error) {
 	}
 
 	if actionLogEnabled() {
-		postLog.Debug(fmt.Sprintf("[OneBot] RecallMsg -> /delete_msg: %d", msgID))
+		postLog.Debug(fmt.Sprintf("[qq_onebot] RecallMsg -> /delete_msg: %d", msgID))
 	}
 
 	respBody, err := c.sendRequest(http.MethodPost, "/delete_msg", reqBody)
@@ -200,7 +200,7 @@ func (c *Client) RecallMsg(msgID int64) (*APIResponse, error) {
 // GetGroupList retrieves the list of joined groups from OneBot.
 func (c *Client) GetGroupList() (*APIResponse, error) {
 	if actionLogEnabled() {
-		postLog.Debug("[OneBot] GetGroupList -> /get_group_list")
+		postLog.Debug("[qq_onebot] GetGroupList -> /get_group_list")
 	}
 
 	respBody, err := c.sendRequest(http.MethodGet, "/get_group_list", nil)
@@ -221,7 +221,7 @@ func (c *Client) GetGroupInfo(groupID int64) (*APIResponse, error) {
 	}
 
 	if actionLogEnabled() {
-		postLog.Debug(fmt.Sprintf("[OneBot] GetGroupInfo -> /get_group_info: %d", groupID))
+		postLog.Debug(fmt.Sprintf("[qq_onebot] GetGroupInfo -> /get_group_info: %d", groupID))
 	}
 
 	respBody, err := c.sendRequest(http.MethodPost, "/get_group_info", reqBody)
@@ -235,7 +235,7 @@ func (c *Client) GetGroupInfo(groupID int64) (*APIResponse, error) {
 // GetFriendsList retrieves the friends list from OneBot.
 func (c *Client) GetFriendsList() (*APIResponse, error) {
 	if actionLogEnabled() {
-		postLog.Debug("[OneBot] GetFriendsList -> /get_friend_list")
+		postLog.Debug("[qq_onebot] GetFriendsList -> /get_friend_list")
 	}
 
 	respBody, err := c.sendRequest(http.MethodGet, "/get_friend_list", nil)
@@ -259,7 +259,7 @@ func (c *Client) Listen(onEvent func(raw []byte)) {
 
 		c.listenOnce(onEvent)
 
-		postLog.Warning("[OneBot] WebSocket disconnected, reconnecting in 5s...")
+		postLog.Warning("[qq_onebot] WebSocket disconnected, reconnecting in 5s...")
 		select {
 		case <-c.stopCh:
 			return
@@ -282,7 +282,7 @@ func (c *Client) listenOnce(onEvent func(raw []byte)) {
 	dialer.Proxy = netproxy.ProxyFunc(c.useProxy)
 	conn, _, err := dialer.Dial(wsURL, header)
 	if err != nil {
-		postLog.Error(fmt.Sprintf("[OneBot] Failed to connect to OneBot WebSocket: %v", err))
+		postLog.Error(fmt.Sprintf("[qq_onebot] Failed to connect to OneBot WebSocket: %v", err))
 		return
 	}
 
@@ -298,7 +298,7 @@ func (c *Client) listenOnce(onEvent func(raw []byte)) {
 		conn.Close()
 	}()
 
-	postLog.Info(fmt.Sprintf("[OneBot] Connected to OneBot WebSocket at %s", wsURL))
+	postLog.Info(fmt.Sprintf("[qq_onebot] Connected to OneBot WebSocket at %s", wsURL))
 
 	for {
 		select {
@@ -309,7 +309,7 @@ func (c *Client) listenOnce(onEvent func(raw []byte)) {
 
 		_, msgBytes, err := conn.ReadMessage()
 		if err != nil {
-			postLog.Error(fmt.Sprintf("[OneBot] WebSocket read error: %v", err))
+			postLog.Error(fmt.Sprintf("[qq_onebot] WebSocket read error: %v", err))
 			return
 		}
 
