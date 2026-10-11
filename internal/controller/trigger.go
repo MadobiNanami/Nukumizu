@@ -3,6 +3,8 @@ package controller
 import (
 	"fmt"
 	"strings"
+
+	"nukumizu-backend/postLog"
 )
 
 // Trigger validates an incoming command against the pipe's authorization
@@ -16,9 +18,11 @@ func (m *Manager) Trigger(cmd Command, trustedGroups, admins []string, listenMet
 	// Check whether the command arrived in a group or a private chat.
 	if cmd.ChatType == "group" {
 		// Group commands are only honored from trusted groups, otherwise discard.
+		// postLog.Debug(fmt.Sprintf("trustedGroups: %v", trustedGroups))
 		if !IsTrustedGroup(cmd.ChatID, trustedGroups) {
 			return "", nil
 		}
+		postLog.Debug("isTrustedGroup")
 	}
 
 	// Commands that require special permission must be sent by an admin.
@@ -37,6 +41,7 @@ func (m *Manager) Trigger(cmd Command, trustedGroups, admins []string, listenMet
 	if response == "" && listenMethod == "at" {
 		return "Unknown command: /" + cmd.Command, nil
 	}
+	// postLog.Debug("[controller] Trigger.resp: " + response)
 	return response, nil
 }
 

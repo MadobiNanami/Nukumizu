@@ -49,7 +49,8 @@ func (q *QQController) Name() string {
 	return "qq_onebot"
 }
 
-// Start initializes the QQ controller and starts the NapCat WebSocket listener.
+// Start initializes the QQ controller and starts the OneBot WebSocket listeners
+// (the event socket and the API socket the client manages internally).
 func (q *QQController) Start() error {
 	if !q.cfg.Enabled {
 		// postLog.Info("QQ (Napcat) controller is disabled")
@@ -208,6 +209,7 @@ func (q *QQController) processCommand(cmd controller.Command) string {
 		postLog.Error("[qq_onebot] OneBot command processing failed: " + err.Error())
 		return ""
 	}
+	// postLog.Debug("[qq_onebot] processCommand.resp: " + response)
 	return response
 }
 

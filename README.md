@@ -77,9 +77,9 @@ nukumizu-backend/
 │           ├── email.go          # Email notification pipe
 │           ├── ntfy.go           # ntfy notification pipe
 │           ├── webhook.go        # Outgoing webhook notification pipe
-│           ├── qq_napcat/
+│           ├── qq_onebot/
 │           │   ├── qq.go         # QQ (NapCat / OneBot 11) bot controller
-│           │   └── napcat.go     # NapCat WebSocket + HTTP API client
+│           │   └── onebot.go     # OneBot 11 WebSocket client (events + API)
 │           └── telegram/
 │               ├── telegram.go   # Telegram bot controller (go-telegram/bot, long polling)
 │               └── send.go       # Message sending / splitting (Telegram Markdown)
@@ -101,7 +101,7 @@ nukumizu-backend/
 - Go **1.25** or newer
 - [Node.js](https://nodejs.org) **22** or newer — only needed to build the web console; a prebuilt binary does not require it
 - A running [Komari](https://www.komari.wiki) Dashboard instance reachable from this host
-- For QQ: a [NapCat](https://napneko.github.io/) instance exposing an OneBot 11 WebSocket + HTTP endpoint
+- For QQ: a [NapCat](https://napneko.github.io/) instance exposing an OneBot 11 forward WebSocket endpoint (`/api` and `/event`)
 - For Telegram: a bot token from [@BotFather](https://t.me/BotFather)
 
 Key dependencies: `github.com/go-telegram/bot`, `github.com/gorilla/websocket`, `gopkg.in/mail.v2`, `modernc.org/sqlite`.
@@ -218,7 +218,7 @@ There are two configuration files, both read from the working directory unless o
 
 Field notes:
 
-- `system.networkProxy` is a **system-wide** proxy URL. A controller only uses it when its own `networkUseProxy` is `true`. Applied to Telegram HTTP polling, NapCat HTTP/WebSocket, ntfy and webhook requests, and Email SMTP (tunneled via HTTP CONNECT).
+- `system.networkProxy` is a **system-wide** proxy URL. A controller only uses it when its own `networkUseProxy` is `true`. Applied to Telegram HTTP polling, QQ OneBot WebSocket, ntfy and webhook requests, and Email SMTP (tunneled via HTTP CONNECT).
 - `webhook` configures the **incoming** webhook API (see [Incoming webhook API](#incoming-webhook-api)); `controllerMethod.webhook` configures the outgoing webhook notification channel. They are independent.
 - `markdown` is a per-channel switch on all five channels. With it `false` (the default) every rendered value is inserted as plain text; with it `true` the values meant to be read verbatim (UUIDs, event messages, commands, command results, alert source and alert content) are wrapped in Markdown code spans / fenced blocks. Nothing is inferred from the channel name, so a channel only ever gets the formatting you asked for — turn it off for a channel whose platform does not render Markdown. On Telegram it also picks the `parse_mode`: with `markdown` off, messages are sent without one, so text containing `*` or `_` is delivered as-is rather than rejected by the API as malformed Markdown.
 - `controllerMethod.qq(napcat).listenMethod` / `telegram.listenMethod` — see [Bot recognition modes](#bot-recognition-modes).
@@ -387,7 +387,7 @@ Status codes: `200` delivered, `400` malformed body or empty `subject`/`content`
 
 ## Bots
 
-QQ (NapCat) and Telegram bots share one command engine and authorization pipeline, implemented in `internal/controller/`. NapCat speaks OneBot 11 (WebSocket event stream + HTTP actions); Telegram uses `go-telegram/bot` long polling.
+QQ (NapCat) and Telegram bots share one command engine and authorization pipeline, implemented in `internal/controller/`. NapCat speaks OneBot 11 over WebSocket (event stream + actions); Telegram uses `go-telegram/bot` long polling.
 
 ### Permission model
 

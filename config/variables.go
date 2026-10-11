@@ -232,7 +232,7 @@ type BotUser_TelegramConfig struct {
 // and trusted groups (chat targets) for each bot channel separately from the
 // main config.json.
 type BotUserConfig struct {
-	QQ       BotUser_QQConfig       `json:"qq(onebot)"`
+	QQ       BotUser_QQConfig       `json:"qq_onebot"`
 	Telegram BotUser_TelegramConfig `json:"telegram"`
 }
 
