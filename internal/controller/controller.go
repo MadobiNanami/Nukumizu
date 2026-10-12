@@ -372,7 +372,9 @@ func (m *Manager) holdOffline(change node.StatusChange, tolerance time.Duration)
 	m.flapPending[change.UUID] = held
 	m.flapMu.Unlock()
 
-	postLog.Debug(fmt.Sprintf("Offline for node %s held for %s (flap tolerance)", change.UUID, tolerance))
+	if config.Current().Debug.ShowFlapTolerantEcho {
+		postLog.Debug(fmt.Sprintf("Offline for node %s held for %s (flap tolerance)", change.UUID, tolerance))
+	}
 }
 
 // fireHeldOffline dispatches a held Offline once its window has elapsed. It
@@ -392,11 +394,15 @@ func (m *Manager) fireHeldOffline(uuid string, held *flapPending) {
 	// Re-check the allow-list: it may have been edited while the change was
 	// held, and years-long holds are possible in principle.
 	if !config.NodeStatusNotifyEnabled(uuid) {
-		postLog.Debug(fmt.Sprintf("Held status change for node %s dropped: enableStatusNotify is not enabled", uuid))
+		if config.Current().Debug.ShowFlapTolerantEcho {
+			postLog.Debug(fmt.Sprintf("Held status change for node %s dropped: enableStatusNotify is not enabled", uuid))
+		}
 		return
 	}
 
-	postLog.Info(fmt.Sprintf("Node %s still offline after flap tolerance; reporting it now", uuid))
+	if config.Current().Debug.ShowFlapTolerantEcho {
+		postLog.Debug(fmt.Sprintf("Node %s still offline after flap tolerance; reporting it now", uuid))
+	}
 	m.dispatchStatusChange(held.change)
 }
 
@@ -424,7 +430,9 @@ func (m *Manager) releaseHeldOffline(uuid string) bool {
 	held.timer.Stop()
 	delete(m.flapPending, uuid)
 
-	postLog.Info(fmt.Sprintf("Node %s returned within flap tolerance; suppressed both notifications", uuid))
+	if config.Current().Debug.ShowFlapTolerantEcho {
+		postLog.Debug(fmt.Sprintf("Node %s returned within flap tolerance; suppressing both halves", uuid))
+	}
 	return true
 }
 

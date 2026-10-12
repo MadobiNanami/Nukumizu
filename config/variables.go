@@ -15,12 +15,13 @@ type SystemConfig struct {
 
 // DebugConfig holds debug-level configuration.
 type DebugConfig struct {
-	ShowOneBotMsg       bool `json:"showOneBotMsg"`
-	ShowOneBotAction    bool `json:"showOneBotAction"`
-	ShowTelegramMsg     bool `json:"showTelegramMsg"`
-	ShowTriggerCmdEcho  bool `json:"showTriggerCmdEcho"`
-	ShowKomariTaskEcho  bool `json:"showKomariTaskEcho"`
-	OneBotIgnoreSelfMsg bool `json:"oneBotIgnoreSelfMsg"`
+	ShowOneBotMsg     	     bool `json:"showOneBotMsg"`
+	ShowOneBotAction  	     bool `json:"showOneBotAction"`
+	ShowTelegramMsg  	     bool `json:"showTelegramMsg"`
+	ShowTriggerCmdEcho  	 bool `json:"showTriggerCmdEcho"`
+	ShowKomariTaskEcho 		 bool `json:"showKomariTaskEcho"`
+	OneBotIgnoreSelfMsg		 bool `json:"oneBotIgnoreSelfMsg"`
+	ShowFlapTolerantEcho 	 bool `json:"showFlapTolerantEcho"`
 }
 
 // KomariAccount holds Komari login credentials.
