@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"nukumizu-backend/config"
 	"nukumizu-backend/internal/node"
@@ -107,6 +108,15 @@ type BotController interface {
 	SendMessage(message Message) error
 }
 
+// flapPending is an Offline notification being held back for a node's
+// flap_tolerant window, in the hope that the node returns before the deadline.
+// The held change is kept by value so a later mutation of the caller's copy
+// cannot reach it.
+type flapPending struct {
+	timer  *time.Timer
+	change node.StatusChange
+}
+
 // Manager manages all controller instances and routes events.
 type Manager struct {
 	mu          sync.RWMutex
@@ -117,6 +127,19 @@ type Manager struct {
 	// from one that does not. It is read on the settings-update goroutine and
 	// written when the set is replaced.
 	builtFrom atomic.Pointer[config.ControllerMethodConfig]
+
+	// flapMu guards flapPending, the Offline notifications currently held for
+	// flap inhibition, keyed by node UUID. It is a separate lock from mu and is
+	// never held while mu is taken: a held notification is dispatched by a timer
+	// goroutine, which must not block behind a routing swap, and dispatching
+	// (network I/O per controller) must not happen while holding the flap lock.
+	flapMu      sync.Mutex
+	flapPending map[string]*flapPending
+
+	// flapToleranceFor overrides the per-node flap window. It is nil in
+	// production, where the value comes from bot_node_config.json through
+	// config.NodeFlapTolerant; tests set it to keep their timings hermetic.
+	flapToleranceFor func(uuid string) time.Duration
 }
 
 var globalManager *Manager
@@ -125,6 +148,7 @@ var globalManager *Manager
 func InitManager() {
 	globalManager = &Manager{
 		controllers: make(map[string]Controller),
+		flapPending: make(map[string]*flapPending),
 	}
 	postLog.Info("Controller manager initialized")
 }
@@ -268,12 +292,37 @@ func (m *Manager) ShowBotServerList() {
 // controllers. It honors the per-node allow-list in bot_node_config.json: a
 // node whose enableStatusNotify is not true is skipped entirely, so no
 // controller (chat bots or notification pipes) broadcasts its change.
+//
+// It also applies flap inhibition, the counterpart of the allow-list and read
+// from the same file: an Offline notification for a node with a positive
+// flap_tolerant is held back for that many seconds instead of being broadcast
+// (see holdOffline). Because both gates live here, every controller is subject
+// to them, chat bots and notification pipes alike.
 func (m *Manager) NotifyStatusChange(change node.StatusChange) {
 	if !config.NodeStatusNotifyEnabled(change.UUID) {
 		postLog.Debug(fmt.Sprintf("Status change for node %s skipped: enableStatusNotify is not enabled", change.UUID))
 		return
 	}
 
+	switch change.Event {
+	case "Offline":
+		if tolerance := m.flapTolerance(change.UUID); tolerance > 0 {
+			m.holdOffline(change, tolerance)
+			return
+		}
+	case "Online":
+		// A node that returns while its Offline is still held flaps: both
+		// halves of the pair are suppressed, and nothing is sent at all.
+		if m.releaseHeldOffline(change.UUID) {
+			return
+		}
+	}
+
+	m.dispatchStatusChange(change)
+}
+
+// dispatchStatusChange hands a change to every enabled controller.
+func (m *Manager) dispatchStatusChange(change node.StatusChange) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -285,6 +334,98 @@ func (m *Manager) NotifyStatusChange(change node.StatusChange) {
 			postLog.Warning(fmt.Sprintf("Controller %s failed to send status change: %v", ctrl.Name(), err))
 		}
 	}
+}
+
+// flapTolerance returns the flap-inhibition window for a node, honoring the
+// test override when one is set.
+func (m *Manager) flapTolerance(uuid string) time.Duration {
+	if m.flapToleranceFor != nil {
+		return m.flapToleranceFor(uuid)
+	}
+	return config.NodeFlapTolerant(uuid)
+}
+
+// holdOffline holds an Offline notification for the given window rather than
+// broadcasting it. If the node returns within the window, releaseHeldOffline
+// claims the held notification first and nothing is sent; otherwise the timer
+// claims it and the Offline goes out late (see fireHeldOffline).
+//
+// A held notification is claimed by removing it from flapPending under flapMu,
+// and the claim is decided by the identity of the map entry. That is what keeps
+// the two racers — the timer and a returning Online — from both winning:
+// whichever gets there first deletes the entry, and the loser finds it gone.
+func (m *Manager) holdOffline(change node.StatusChange, tolerance time.Duration) {
+	m.flapMu.Lock()
+	if m.flapPending == nil {
+		m.flapPending = make(map[string]*flapPending)
+	}
+	// Defensive: the tracker reports transitions, so a second Offline should
+	// not arrive for a node already held, but if one does the older hold is
+	// superseded — its callback loses the claim below and drops the change.
+	if old := m.flapPending[change.UUID]; old != nil {
+		old.timer.Stop()
+	}
+	held := &flapPending{change: change}
+	held.timer = time.AfterFunc(tolerance, func() {
+		m.fireHeldOffline(change.UUID, held)
+	})
+	m.flapPending[change.UUID] = held
+	m.flapMu.Unlock()
+
+	postLog.Debug(fmt.Sprintf("Offline for node %s held for %s (flap tolerance)", change.UUID, tolerance))
+}
+
+// fireHeldOffline dispatches a held Offline once its window has elapsed. It
+// claims the entry first and returns without sending if the hold was already
+// released or superseded, so a node that came back in time never reports an
+// Offline.
+func (m *Manager) fireHeldOffline(uuid string, held *flapPending) {
+	m.flapMu.Lock()
+	if m.flapPending[uuid] != held {
+		// Already claimed by a returning Online, or replaced by a newer hold.
+		m.flapMu.Unlock()
+		return
+	}
+	delete(m.flapPending, uuid)
+	m.flapMu.Unlock()
+
+	// Re-check the allow-list: it may have been edited while the change was
+	// held, and years-long holds are possible in principle.
+	if !config.NodeStatusNotifyEnabled(uuid) {
+		postLog.Debug(fmt.Sprintf("Held status change for node %s dropped: enableStatusNotify is not enabled", uuid))
+		return
+	}
+
+	postLog.Info(fmt.Sprintf("Node %s still offline after flap tolerance; reporting it now", uuid))
+	m.dispatchStatusChange(held.change)
+}
+
+// releaseHeldOffline claims and cancels a held Offline notification, reporting
+// whether one was still pending. A true result means the node returned within
+// its flap window, so the caller must suppress the Online as well.
+//
+// Stop's return value is deliberately ignored: false also covers "the timer has
+// started firing but has not yet taken flapMu", which is not the same as
+// "already dispatched". Removing the entry is what decides the race, and it
+// makes the only possible outcomes "both halves sent" (the timer won, the node
+// really did stay down past the deadline) or "neither sent" — never an Offline
+// with no matching Online.
+func (m *Manager) releaseHeldOffline(uuid string) bool {
+	m.flapMu.Lock()
+	defer m.flapMu.Unlock()
+
+	if m.flapPending == nil {
+		return false
+	}
+	held := m.flapPending[uuid]
+	if held == nil {
+		return false
+	}
+	held.timer.Stop()
+	delete(m.flapPending, uuid)
+
+	postLog.Info(fmt.Sprintf("Node %s returned within flap tolerance; suppressed both notifications", uuid))
+	return true
 }
 
 // NotifyAlert delivers an alert to the named pipes only, and returns the names
@@ -340,8 +481,19 @@ func (m *Manager) IsMarkdown(pipeName string) bool {
 	return ctrl.IsMarkdown()
 }
 
-// StopAll stops all registered controllers.
+// StopAll stops all registered controllers. Held Offline notifications are
+// dropped first: their timers would otherwise fire against a shutting-down
+// controller set. A timer that has already claimed its entry can still be
+// dispatching concurrently, which is harmless — it reads the same registry
+// under the same lock.
 func (m *Manager) StopAll() {
+	m.flapMu.Lock()
+	for uuid, held := range m.flapPending {
+		held.timer.Stop()
+		delete(m.flapPending, uuid)
+	}
+	m.flapMu.Unlock()
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, ctrl := range m.controllers {

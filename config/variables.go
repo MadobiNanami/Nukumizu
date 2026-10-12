@@ -257,13 +257,24 @@ type BotNodeOptions struct {
 	// bool) lets an absent field be told apart from an explicit false, and
 	// omitempty keeps untouched nodes stored as {}.
 	EnableStatusNotify *bool `json:"enableStatusNotify,omitempty"`
+
+	// FlapTolerant is the number of seconds a node's Offline notification is
+	// held in the hope the node returns. A node that comes back online within
+	// this window produces no notification at all; one still offline when the
+	// window elapses reports Offline as usual. Zero (or an absent field)
+	// disables inhibition, which keeps the notify-immediately behavior. It is
+	// a float64 rather than an int so a hand-written fractional value such as
+	// 2.5 parses instead of failing the whole config load at startup, and it
+	// is not a pointer because 0 already means "off", unlike
+	// EnableStatusNotify whose default is true.
+	FlapTolerant float64 `json:"flap_tolerant,omitempty"`
 }
 
 // BotNodeMembers maps a node UUID (as reported by Komari) to its per-node
 // options.
 type BotNodeMembers map[string]BotNodeOptions
 
-// botNodeConfig mirrors bot_node_config.json, populated by LoadBotNodeConfig.
+// NodeConfig mirrors bot_node_config.json, populated by LoadNodeConfig.
 // The map is rebuilt rather than mutated on every load, so the pointer can be
 // swapped atomically; read it through BotNodes.
 var botNodeConfig atomic.Pointer[BotNodeMembers]

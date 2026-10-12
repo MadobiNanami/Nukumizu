@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 )
 
 // LoadBotNodeConfig reads and parses bot_node_config.json and stores it as the
 // global C_botNodeConfig singleton, mirroring LoadGlobalConfig. Unlike the
 // other config files this one is auto-generated and optional: a missing or
-// empty file yields an empty map, so every node falls back to its default
-// enableStatusNotify value (true).
+// empty file yields an empty map, so every node falls back to its defaults —
+// enableStatusNotify true and flap_tolerant 0 (no flap inhibition).
 func LoadBotNodeConfig(configPath string) error {
 	cfg := BotNodeMembers{}
 	data, err := os.ReadFile(configPath)
@@ -42,6 +43,27 @@ func NodeStatusNotifyEnabled(uuid string) bool {
 		return true
 	}
 	return *opts.EnableStatusNotify
+}
+
+// maxFlapTolerantSeconds bounds the flap-inhibition window so an absurd
+// hand-written value cannot overflow time.Duration.
+const maxFlapTolerantSeconds = 86400
+
+// NodeFlapTolerant returns how long an Offline notification for uuid should be
+// held in order to absorb a quick reconnect, per bot_node_config.json's
+// flap_tolerant. It returns 0 (inhibition disabled) when the node has no entry,
+// the value is zero or negative, or the config has not been loaded — in every
+// case the caller falls back to notifying immediately.
+func NodeFlapTolerant(uuid string) time.Duration {
+	opts, ok := BotNodes()[uuid]
+	if !ok || opts.FlapTolerant <= 0 {
+		return 0
+	}
+	seconds := opts.FlapTolerant
+	if seconds > maxFlapTolerantSeconds {
+		seconds = maxFlapTolerantSeconds
+	}
+	return time.Duration(seconds * float64(time.Second))
 }
 
 // LoadGlobalConfig reads and parses the configuration file, applies defaults,
@@ -168,7 +190,8 @@ func LoadBotUserConfig(configPath string) (*BotUserConfig, error) {
 // which is a plain registry of the nodes Komari reports (read back at startup
 // by LoadBotNodeConfig). Entries already present are always preserved: a UUID
 // Komari no longer reports on a given fetch is kept rather than deleted, and
-// any enableStatusNotify a user set by hand is left untouched. UUIDs seen for
+// any per-node option a user set by hand — enableStatusNotify or flap_tolerant
+// — is left untouched. UUIDs seen for
 // the first time are added as an empty object, i.e. no parameter is written, so
 // they inherit the enableStatusNotify default (true). The resulting JSON has
 // its object keys emitted in sorted order by encoding/json, keeping the file

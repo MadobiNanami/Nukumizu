@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -77,6 +79,228 @@ func (m *Manager) routedTo(name string) Controller {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.controllers[name]
+}
+
+// heldOffline returns the Offline notification the manager is currently holding
+// for the given node, if any. It lets a test drive the hold/fire/release race
+// deterministically instead of racing a real timer.
+func (m *Manager) heldOffline(uuid string) *flapPending {
+	m.flapMu.Lock()
+	defer m.flapMu.Unlock()
+	return m.flapPending[uuid]
+}
+
+// recordingController keeps every status change it is handed, so a test can
+// assert on what actually reached the controllers. The embedded fakeController
+// satisfies the rest of the Controller interface.
+type recordingController struct {
+	*fakeController
+	changes chan node.StatusChange
+}
+
+func newRecording(name string) *recordingController {
+	return &recordingController{
+		fakeController: newFake(name),
+		changes:        make(chan node.StatusChange, 16),
+	}
+}
+
+func (r *recordingController) SendStatusChange(change node.StatusChange) error {
+	r.changes <- change
+	return nil
+}
+
+// awaitChange blocks until a status change reaches the controller, failing the
+// test rather than hanging if none does.
+func awaitChange(t *testing.T, rec *recordingController, what string) node.StatusChange {
+	t.Helper()
+	select {
+	case change := <-rec.changes:
+		return change
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for the %s notification", what)
+		return node.StatusChange{}
+	}
+}
+
+// expectNoChange asserts that no status change reaches the controller for the
+// given window. Only a negative assertion needs a real wait; the manager has no
+// observable "decided to stay silent" event.
+func expectNoChange(t *testing.T, rec *recordingController, window time.Duration, what string) {
+	t.Helper()
+	select {
+	case change := <-rec.changes:
+		t.Fatalf("unexpected %s notification: %+v", what, change)
+	case <-time.After(window):
+	}
+}
+
+func offlineChange(uuid string) node.StatusChange {
+	return node.StatusChange{Event: "Offline", UUID: uuid, Name: uuid, OldOnline: true, NewOnline: false}
+}
+
+func onlineChange(uuid string) node.StatusChange {
+	return node.StatusChange{Event: "Online", UUID: uuid, Name: uuid, OldOnline: false, NewOnline: true}
+}
+
+// flapTestManager returns a manager with a recording controller installed and
+// the flap window stubbed to tolerance, so the tests never touch the global
+// bot_node_config.json or wait on real seconds. ReplaceAll makes the controller
+// routable before it starts it, so no start handshake is needed here.
+func flapTestManager(tolerance time.Duration) (*Manager, *recordingController) {
+	m := newTestManager()
+	m.flapToleranceFor = func(string) time.Duration { return tolerance }
+	rec := newRecording("recorder")
+	m.ReplaceAll([]Controller{rec}, config.ControllerMethodConfig{})
+	return m, rec
+}
+
+// TestFlapInhibitionSuppressesBothHalves is the core guarantee: a node that
+// returns inside its flap window produces no notification at all, so a flapping
+// node does not flood the controllers.
+func TestFlapInhibitionSuppressesBothHalves(t *testing.T) {
+	m, rec := flapTestManager(50 * time.Millisecond)
+
+	m.NotifyStatusChange(offlineChange("flappy"))
+	m.NotifyStatusChange(onlineChange("flappy"))
+
+	expectNoChange(t, rec, 300*time.Millisecond, "suppressed offline/online pair")
+
+	if held := m.heldOffline("flappy"); held != nil {
+		t.Error("the held offline notification was not released when the node returned")
+	}
+}
+
+// TestFlapInhibitionReportsLateOffline: a node still down when the window
+// elapses reports Offline as usual, however late the notification is.
+func TestFlapInhibitionReportsLateOffline(t *testing.T) {
+	m, rec := flapTestManager(50 * time.Millisecond)
+
+	m.NotifyStatusChange(offlineChange("down"))
+
+	if change := awaitChange(t, rec, "offline"); change.Event != "Offline" || change.UUID != "down" {
+		t.Errorf("got %+v, want the Offline change for node down", change)
+	}
+	if held := m.heldOffline("down"); held != nil {
+		t.Error("the held notification was still pending after it was dispatched")
+	}
+}
+
+// TestFlapInhibitionReportsRecoveryAfterWindow: once the Offline has gone out,
+// the node's eventual return is a genuine recovery and must be reported. This
+// is the honest half of the "both or neither, never Offline alone" rule.
+func TestFlapInhibitionReportsRecoveryAfterWindow(t *testing.T) {
+	m, rec := flapTestManager(50 * time.Millisecond)
+
+	m.NotifyStatusChange(offlineChange("down"))
+	if change := awaitChange(t, rec, "offline"); change.Event != "Offline" {
+		t.Fatalf("got %+v, want the Offline change", change)
+	}
+
+	m.NotifyStatusChange(onlineChange("down"))
+	if change := awaitChange(t, rec, "online"); change.Event != "Online" {
+		t.Errorf("got %+v, want the Online change", change)
+	}
+}
+
+// TestFlapInhibitionDisabledWithoutTolerance guards the previous behavior: with
+// no window (the default for every node), an Offline still goes out at once.
+func TestFlapInhibitionDisabledWithoutTolerance(t *testing.T) {
+	m, rec := flapTestManager(0)
+
+	m.NotifyStatusChange(offlineChange("plain"))
+
+	if change := awaitChange(t, rec, "offline"); change.Event != "Offline" {
+		t.Errorf("got %+v, want the Offline change", change)
+	}
+	if held := m.heldOffline("plain"); held != nil {
+		t.Error("a node without a flap window must not have a held notification")
+	}
+}
+
+// TestFlapInhibitionHonorsEnableStatusNotify pins the gate ordering: a node
+// whose notifications are switched off is skipped before any hold is taken, so
+// it cannot report a late Offline either.
+func TestFlapInhibitionHonorsEnableStatusNotify(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bot_node_config.json")
+	content := `{"muted": {"enableStatusNotify": false, "flap_tolerant": 600}}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write node config: %v", err)
+	}
+	if err := config.LoadBotNodeConfig(path); err != nil {
+		t.Fatalf("LoadBotNodeConfig: %v", err)
+	}
+	// Leave nothing behind for the other tests in this package, which reach the
+	// same package-global node config.
+	t.Cleanup(func() {
+		if err := config.LoadBotNodeConfig(filepath.Join(dir, "empty.json")); err != nil {
+			t.Errorf("reset node config: %v", err)
+		}
+	})
+
+	// The stub reports a window, so only the allow-list can be responsible for
+	// the silence.
+	m, rec := flapTestManager(time.Hour)
+	m.NotifyStatusChange(offlineChange("muted"))
+
+	expectNoChange(t, rec, 100*time.Millisecond, "offline for a muted node")
+	if held := m.heldOffline("muted"); held != nil {
+		t.Error("a muted node must not have its Offline held")
+	}
+}
+
+// TestFlapInhibitionClaimOrder pins both sides of the hold/fire/release race
+// deterministically, with a window long enough that the real timer never fires:
+// whichever claims the held notification first wins, and the loser sees it gone.
+func TestFlapInhibitionClaimOrder(t *testing.T) {
+	t.Run("release first suppresses the pair", func(t *testing.T) {
+		m, rec := flapTestManager(time.Hour)
+		m.NotifyStatusChange(offlineChange("node"))
+
+		held := m.heldOffline("node")
+		if held == nil {
+			t.Fatal("the offline notification was not held")
+		}
+		if !m.releaseHeldOffline("node") {
+			t.Fatal("releaseHeldOffline reported no pending notification")
+		}
+		// The timer goroutine loses the claim and must not dispatch.
+		m.fireHeldOffline("node", held)
+
+		expectNoChange(t, rec, 100*time.Millisecond, "notification after a release")
+	})
+
+	t.Run("fire first reports the offline alone", func(t *testing.T) {
+		m, rec := flapTestManager(time.Hour)
+		m.NotifyStatusChange(offlineChange("node"))
+
+		held := m.heldOffline("node")
+		if held == nil {
+			t.Fatal("the offline notification was not held")
+		}
+		m.fireHeldOffline("node", held)
+
+		if change := awaitChange(t, rec, "offline"); change.Event != "Offline" {
+			t.Errorf("got %+v, want the Offline change", change)
+		}
+		if m.releaseHeldOffline("node") {
+			t.Error("a fired notification must not be claimable again")
+		}
+	})
+}
+
+// TestStopAllDropsHeldNotifications: a hold must not outlive the controllers it
+// was meant for.
+func TestStopAllDropsHeldNotifications(t *testing.T) {
+	m, _ := flapTestManager(time.Hour)
+	m.NotifyStatusChange(offlineChange("node"))
+
+	m.StopAll()
+
+	if held := m.heldOffline("node"); held != nil {
+		t.Error("StopAll left a held offline notification armed")
+	}
 }
 
 func TestReplaceAllInstallsAndStarts(t *testing.T) {
