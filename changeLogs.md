@@ -1,3 +1,8 @@
+## Ver.0.2.2.7-8c2159f.pre-release
+### Features
+- [Add flap inhibiton for nodes]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/03e74f49c36ba05995651135bd0f472b95bfede6")
+- [Put all node-related settings into a seperate dialog box]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/1a7a4cdc073cccec4aa5fb61e139919b0c757dbe")
+
 ## Ver.0.2.1.6-d06d0bc.pre-release
 ### Features
 - Most of settings now support hot reload when changed
