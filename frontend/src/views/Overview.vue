@@ -145,7 +145,6 @@ onBeforeUnmount(() => {
             <div>
                 <p class="eyebrow">Overview</p>
                 <h1>Nodes</h1>
-                <p class="lead">Monitored servers with live load and online state. The pencil on a card opens that node's status-notify switch and flap-inhibition window.</p>
             </div>
             <div class="head-actions">
                 <button class="btn btn-ghost" title="Refresh" :disabled="loading" @click="load">
@@ -265,7 +264,7 @@ onBeforeUnmount(() => {
             <div class="field">
                 <label>Status notify</label>
                 <Toggle v-model="editing.notify" label="Report online / offline changes" />
-                <p class="help">With this off, the node's status changes are not delivered to any controller — chat bots and notification pipes alike.</p>
+                <p class="help">With this off, the node's status changes are not delivered to any pipes.</p>
             </div>
 
             <div class="field">

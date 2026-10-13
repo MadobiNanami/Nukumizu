@@ -23,7 +23,7 @@ const sections = [
     {
         id: 'debug',
         title: 'Debug logging',
-        hint: 'Per-module verbosity for the bot pipes and node status notifications.',
+        hint: '',
         root: ['debug'],
         fields: [
             { key: 'showOneBotMsg', type: 'bool', label: 'OneBot messages' },
@@ -31,7 +31,7 @@ const sections = [
             { key: 'showTelegramMsg', type: 'bool', label: 'Telegram messages' },
             { key: 'showTriggerCmdEcho', type: 'bool', label: 'Trigger command echo' },
             { key: 'showKomariTaskEcho', type: 'bool', label: 'Komari task echo' },
-            { key: 'showFlapTolerantEcho', type: 'bool', label: 'Flap inhibition echo', help: 'Log every flap-inhibition decision: an offline change being held, released by a quick return, or reported after the window elapsed.' },
+            { key: 'showFlapTolerantEcho', type: 'bool', label: 'Flap inhibition echo' },
             { key: 'onebotIgnoreSelfMsg', type: 'bool', label: 'Ignore OneBot self messages' }
         ]
     },
@@ -81,7 +81,7 @@ const sections = [
         root: ['controllerMethod', 'telegram'],
         fields: [
             { key: 'enabled', type: 'bool', label: 'Enabled' },
-            { key: 'markdown', type: 'bool', label: 'Markdown', help: 'Sends messages with parse_mode=Markdown; turn off to have text delivered verbatim.' },
+            { key: 'markdown', type: 'bool', label: 'Markdown' },
             { key: 'networkUseProxy', type: 'bool', label: 'Use network proxy' },
             { key: 'botToken', type: 'password', label: 'Bot token' },
             { key: 'listenMethod', type: 'select', label: 'Listen method', options: ['global', 'at'] }
@@ -93,7 +93,7 @@ const sections = [
         root: ['controllerMethod', 'email'],
         fields: [
             { key: 'enabled', type: 'bool', label: 'Enabled' },
-            { key: 'markdown', type: 'bool', label: 'Markdown', help: 'Send the formatted variant of the templates (code blocks, inline code).' },
+            { key: 'markdown', type: 'bool', label: 'Markdown' },
             { key: 'networkUseProxy', type: 'bool', label: 'Use network proxy' },
             { key: 'smtpHost', type: 'text', label: 'SMTP host' },
             { key: 'smtpPort', type: 'number', label: 'SMTP port' },
@@ -110,7 +110,7 @@ const sections = [
         root: ['controllerMethod', 'ntfy'],
         fields: [
             { key: 'enabled', type: 'bool', label: 'Enabled' },
-            { key: 'markdown', type: 'bool', label: 'Markdown', help: 'Send the formatted variant of the templates (code blocks, inline code).' },
+            { key: 'markdown', type: 'bool', label: 'Markdown' },
             { key: 'networkUseProxy', type: 'bool', label: 'Use network proxy' },
             { key: 'server', type: 'text', label: 'Server' },
             { key: 'topic', type: 'text', label: 'Topic' },
@@ -125,7 +125,7 @@ const sections = [
         root: ['controllerMethod', 'webhook'],
         fields: [
             { key: 'enabled', type: 'bool', label: 'Enabled' },
-            { key: 'markdown', type: 'bool', label: 'Markdown', help: 'Format the alert body with code blocks and inline code in the posted payload.' },
+            { key: 'markdown', type: 'bool', label: 'Markdown' },
             { key: 'networkUseProxy', type: 'bool', label: 'Use network proxy' },
             { key: 'url', type: 'text', label: 'URL' },
             { key: 'method', type: 'select', label: 'Method', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
@@ -171,7 +171,6 @@ onMounted(load);
             <div>
                 <p class="eyebrow">Configuration</p>
                 <h1>System settings</h1>
-                <p class="lead">Edit the global <span class="mono">config.json</span>. Every card saves only its own section — other fields stay untouched.</p>
             </div>
             <div class="head-actions">
                 <button class="btn btn-ghost" @click="load"><i class="fas fa-rotate" :class="{ 'fa-spin': loading }" /> Reload</button>
