@@ -4,6 +4,7 @@ import { serverApi, settingsApi } from '../api/index.js';
 import { toast } from '../utils/toast.js';
 import { formatBytes, shortUUID } from '../utils/fmt.js';
 import Toggle from '../components/Toggle.vue';
+import Modal from '../components/Modal.vue';
 
 function percent(m) {
     return m && m.total ? Math.min(100, Math.max(0, Math.round((m.used / m.total) * 100))) : 0;
@@ -13,8 +14,19 @@ const query = ref('');
 const loading = ref(true);
 const failed = ref(false);
 const entries = ref([]);
-const saving = reactive(new Set());
 let timer = null;
+
+// The per-node options dialog. Its form is a copy of the node's settings taken
+// when the dialog opens, so the 15s card refresh behind it cannot disturb an
+// open editor, and closing without saving leaves the node untouched.
+const editing = reactive({
+    open: false,
+    uuid: '',
+    name: '',
+    notify: true,
+    flap: '',
+    saving: false
+});
 
 const filtered = computed(() => {
     const q = query.value.trim().toLowerCase();
@@ -57,7 +69,8 @@ async function load() {
                 online: !!s.online,
                 report: s.report || null,
                 info: infoEntry.info || null,
-                notify: conf.enableStatusNotify !== false
+                notify: conf.enableStatusNotify !== false,
+                flapTolerant: Number(conf.flap_tolerant) > 0 ? Number(conf.flap_tolerant) : 0
             });
         }
         list.sort((a, b) => (a.online === b.online ? a.name.localeCompare(b.name) : b.online ? 1 : -1));
@@ -71,21 +84,42 @@ async function load() {
     }
 }
 
-async function toggleNotify(entry) {
-    const next = !entry.notify;
-    const prev = entry.notify;
-    entry.notify = next;
-    saving.add(entry.uuid);
+function openOptions(entry) {
+    editing.uuid = entry.uuid;
+    editing.name = entry.name;
+    editing.notify = entry.notify;
+    editing.flap = entry.flapTolerant ? String(entry.flapTolerant) : '';
+    editing.open = true;
+}
+
+// saveOptions writes both options in one patch. A flap window that is not a
+// positive number disables inhibition, which is sent as a JSON null so the key
+// is removed rather than stored as an explicit 0 — the file then keeps matching
+// its documented "absent means off" default.
+async function saveOptions() {
+    const typed = Number(editing.flap);
+    const seconds = Number.isFinite(typed) && typed > 0 ? typed : 0;
+    const uuid = editing.uuid;
+
+    editing.saving = true;
     try {
         const patch = {};
-        patch[entry.uuid] = { enableStatusNotify: next };
+        patch[uuid] = {
+            enableStatusNotify: editing.notify,
+            flap_tolerant: seconds > 0 ? seconds : null
+        };
         await settingsApi.set('bot_node_config', patch);
-        toast.success(`${entry.name}: status notify ${next ? 'on' : 'off'}`);
+        const entry = entries.value.find((e) => e.uuid === uuid);
+        if (entry) {
+            entry.notify = editing.notify;
+            entry.flapTolerant = seconds;
+        }
+        toast.success(`${editing.name}: options saved`);
+        editing.open = false;
     } catch (e) {
-        entry.notify = prev;
         toast.error('Save failed: ' + e.message);
     } finally {
-        saving.delete(entry.uuid);
+        editing.saving = false;
     }
 }
 
@@ -111,7 +145,7 @@ onBeforeUnmount(() => {
             <div>
                 <p class="eyebrow">Overview</p>
                 <h1>Nodes</h1>
-                <p class="lead">Monitored servers with live load, online state, and the per-node status-notify switch.</p>
+                <p class="lead">Monitored servers with live load and online state. The pencil on a card opens that node's status-notify switch and flap-inhibition window.</p>
             </div>
             <div class="head-actions">
                 <button class="btn btn-ghost" title="Refresh" :disabled="loading" @click="load">
@@ -207,17 +241,60 @@ onBeforeUnmount(() => {
                         <span>·</span>
                         <span class="mono">{{ e.info.ipv4 || (e.info.ipv6 ? 'IPv6' : '—') }}</span>
                     </div>
-                    <div class="notify">
-                        <Toggle
-                            :model-value="e.notify"
-                            label="Status notify"
-                            :disabled="saving.has(e.uuid)"
-                            @update:model-value="toggleNotify(e)"
-                        />
+                    <div class="opts">
+                        <span v-if="!e.notify" class="chip" title="Status-change notifications are off for this node">
+                            <i class="fas fa-bell-slash" /> Notify off
+                        </span>
+                        <span v-if="e.flapTolerant" class="chip" title="Flap inhibition window">
+                            <i class="fas fa-shield-halved" /> Flap {{ e.flapTolerant }}s
+                        </span>
+                        <button class="icon-btn" title="Node options" @click="openOptions(e)">
+                            <i class="fas fa-pen" />
+                        </button>
                     </div>
                 </footer>
             </article>
         </div>
+
+        <Modal :open="editing.open" title="Node options" @close="editing.open = false">
+            <div class="node-head">
+                <p class="node-name">{{ editing.name }}</p>
+                <p class="node-uuid mono">{{ editing.uuid }}</p>
+            </div>
+
+            <div class="field">
+                <label>Status notify</label>
+                <Toggle v-model="editing.notify" label="Report online / offline changes" />
+                <p class="help">With this off, the node's status changes are not delivered to any controller — chat bots and notification pipes alike.</p>
+            </div>
+
+            <div class="field">
+                <label>Flap inhibition</label>
+                <div class="flap-row">
+                    <input
+                        v-model="editing.flap"
+                        class="input flap-input"
+                        type="number"
+                        min="0"
+                        max="86400"
+                        step="1"
+                        inputmode="numeric"
+                        placeholder="0"
+                        @keydown.enter="saveOptions"
+                    />
+                    <span class="flap-unit">seconds</span>
+                </div>
+                <p class="help">How long the node may drop offline and come back without a notification being sent. An outage lasting longer than this is still reported. Leave empty or 0 to report every change right away.</p>
+            </div>
+
+            <template #foot>
+                <button class="btn btn-ghost" @click="editing.open = false">Cancel</button>
+                <button class="btn btn-primary" :disabled="editing.saving" @click="saveOptions">
+                    <span v-if="editing.saving" class="spinner" style="width:12px;height:12px" />
+                    <i v-else class="fas fa-check" /> Save
+                </button>
+            </template>
+        </Modal>
     </section>
 </template>
 
@@ -298,7 +375,67 @@ onBeforeUnmount(() => {
     flex-wrap: wrap;
 }
 
-.notify { display: flex; align-items: center; }
+.opts {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    /* Stay right-aligned even when the spec block is absent. */
+    margin-left: auto;
+}
+
+.opts .chip { white-space: nowrap; }
+
+/* --- Node options dialog ------------------------------------------------ */
+
+.node-head {
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+}
+
+.node-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.node-uuid {
+    font-size: 11.5px;
+    color: var(--text-3);
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+}
+
+/* The modal body has no grid to space stacked fields. */
+.field + .field { margin-top: 20px; }
+
+.flap-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.flap-input {
+    width: 110px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    /* Match the plain hand-rolled field look: the rest of the console renders
+       numbers as ordinary inputs, so the spinner controls would stand out. */
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.flap-input::-webkit-outer-spin-button,
+.flap-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.flap-unit {
+    font-size: 12.5px;
+    color: var(--text-3);
+}
 
 .refresh-hint {
     font-size: 12px;

@@ -5,7 +5,7 @@ Web console for the Nukumizu backend — a remote-server monitor and alert bot. 
 ## Features
 
 - **Sign in / first-run admin** — login, or create the very first admin while the database is still empty (the backend rejects further registrations once any user exists).
-- **Nodes (overview)** — live server cards from the backend status/info APIs: online state, CPU / RAM / disk load, plus the per-node *status notify* switch persisted to `bot_node_config.json`. Searchable, auto-refreshes.
+- **Nodes (overview)** — live server cards from the backend status/info APIs: online state, CPU / RAM / disk load. The pencil on a card opens a per-node options dialog holding the *status notify* switch and the *flap inhibition* window, persisted to `bot_node_config.json`. Searchable, auto-refreshes.
 - **Bot trust** — manage QQ (NapCat) and Telegram admins & trusted groups in `bot_user_config.json`: add / remove members and toggle each member's `status notify`, `startup notify`, and `command replies`.
 - **Settings** — structured forms for the global `config.json` (system, debug, Komari dashboard, controller methods, message templates, storage paths). Each card saves only its own section.
 - **System logs** — live WebSocket log stream (`/api/system/getLogs`) with severity filter chips, search, pause/resume and export.

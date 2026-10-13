@@ -23,7 +23,7 @@ const sections = [
     {
         id: 'debug',
         title: 'Debug logging',
-        hint: 'Per-module verbosity for the bot pipes.',
+        hint: 'Per-module verbosity for the bot pipes and node status notifications.',
         root: ['debug'],
         fields: [
             { key: 'showOneBotMsg', type: 'bool', label: 'OneBot messages' },
@@ -31,6 +31,7 @@ const sections = [
             { key: 'showTelegramMsg', type: 'bool', label: 'Telegram messages' },
             { key: 'showTriggerCmdEcho', type: 'bool', label: 'Trigger command echo' },
             { key: 'showKomariTaskEcho', type: 'bool', label: 'Komari task echo' },
+            { key: 'showFlapTolerantEcho', type: 'bool', label: 'Flap inhibition echo', help: 'Log every flap-inhibition decision: an offline change being held, released by a quick return, or reported after the window elapsed.' },
             { key: 'onebotIgnoreSelfMsg', type: 'bool', label: 'Ignore OneBot self messages' }
         ]
     },

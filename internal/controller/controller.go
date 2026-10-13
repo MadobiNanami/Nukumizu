@@ -372,9 +372,19 @@ func (m *Manager) holdOffline(change node.StatusChange, tolerance time.Duration)
 	m.flapPending[change.UUID] = held
 	m.flapMu.Unlock()
 
-	if config.Current().Debug.ShowFlapTolerantEcho {
+	if flapEchoEnabled() {
 		postLog.Debug(fmt.Sprintf("Offline for node %s held for %s (flap tolerance)", change.UUID, tolerance))
 	}
+}
+
+// flapEchoEnabled reports whether the flap-inhibition log lines are emitted,
+// per the ShowFlapTolerantEcho debug flag. config.Current is nil before the
+// first configuration load — which includes every unit test that drives the
+// manager directly — so it is checked before the flag is read, the way the
+// other per-module debug flags are (see internal/controller/pipes/qq_onebot).
+func flapEchoEnabled() bool {
+	cfg := config.Current()
+	return cfg != nil && cfg.Debug.ShowFlapTolerantEcho
 }
 
 // fireHeldOffline dispatches a held Offline once its window has elapsed. It
@@ -394,13 +404,13 @@ func (m *Manager) fireHeldOffline(uuid string, held *flapPending) {
 	// Re-check the allow-list: it may have been edited while the change was
 	// held, and years-long holds are possible in principle.
 	if !config.NodeStatusNotifyEnabled(uuid) {
-		if config.Current().Debug.ShowFlapTolerantEcho {
+		if flapEchoEnabled() {
 			postLog.Debug(fmt.Sprintf("Held status change for node %s dropped: enableStatusNotify is not enabled", uuid))
 		}
 		return
 	}
 
-	if config.Current().Debug.ShowFlapTolerantEcho {
+	if flapEchoEnabled() {
 		postLog.Debug(fmt.Sprintf("Node %s still offline after flap tolerance; reporting it now", uuid))
 	}
 	m.dispatchStatusChange(held.change)
@@ -430,7 +440,7 @@ func (m *Manager) releaseHeldOffline(uuid string) bool {
 	held.timer.Stop()
 	delete(m.flapPending, uuid)
 
-	if config.Current().Debug.ShowFlapTolerantEcho {
+	if flapEchoEnabled() {
 		postLog.Debug(fmt.Sprintf("Node %s returned within flap tolerance; suppressing both halves", uuid))
 	}
 	return true
