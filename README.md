@@ -1,42 +1,53 @@
 # Nukumizu Backend
 
+English | [简体中文](README.zh-CN.md)
+
 Remote server monitoring and command execution subsystem for [Komari](https://www.komari.wiki).
 
-Nukumizu connects to a Komari Dashboard instance, keeps an in-memory view of every monitored server, and pushes alerts to several notification channels. It also runs interactive bots on QQ (via [NapCat](https://napneko.github.io/), OneBot 11) and Telegram so operators can control servers from chat.
+Nukumizu connects to a Komari Dashboard instance, keeps an in-memory view of every monitored server, and pushes alerts to several notification channels. It also runs interactive bots on QQ (via [NapCat](https://napneko.github.io/) or any OneBot 11 implementation) and Telegram so operators can control servers from chat. A Vue console embedded in the binary provides the same overview and settings from a browser.
 
 ## Features
 
-- **Komari integration** — logs into the Komari Dashboard, refreshes the node list on startup and every 5 minutes, and polls each node's latest status through the Komari WebSocket every 5 seconds.
-- **Status tracking** — a thread-safe node tracker keeps the latest report and static info per server and detects `Online` / `Offline` transitions.
+- **Komari integration** — logs into the Komari Dashboard, refreshing the node list on startup and every 5 minutes, and pulls each node's latest status over the Komari WebSocket every 5 seconds.
+- **Resilient upstream access** — login and node fetching are retried up to 6 attempts with linear backoff (0.5s × attempt) on transport errors, `429` and `5xx`. Credential failures, `4xx` responses and JSON-RPC errors fail immediately instead of hammering the dashboard.
+- **Status tracking** — a thread-safe node tracker keeps the latest report and static info per server and detects `Online` / `Offline` transitions. The first snapshot after startup is treated as a baseline, so a restart does not produce a wave of false "offline" alerts.
+- **Per-node notification control** — `bot_node_config.json` can silence status pushes for an individual node, and can hold an `Offline` notification for a configurable window so a quick reconnect produces no alert at all (flap inhibition).
 - **Remote command execution** — dispatches commands through the Komari task API and polls the result (1s interval, up to 60s timeout).
-- **Interactive bots** — QQ (NapCat / OneBot 11) and Telegram bots for `/list`, `/status`, `/info`, `/run`, `/shutdown`, `/reboot`, and more, protected by an admin / trusted-group permission model.
-- **Notification channels** — server status changes are pushed to every enabled channel: QQ, Telegram, Email (SMTP), [ntfy](https://ntfy.sh), and Webhook.
+- **Interactive bots** — QQ (OneBot 11, e.g. NapCat) and Telegram bots for `/list`, `/status`, `/info`, `/run`, `/shutdown`, `/reboot`, and more, protected by an admin / trusted-group permission model.
+- **Notification channels** — status changes are pushed to every enabled channel: QQ, Telegram, Email (SMTP), [ntfy](https://ntfy.sh), and Webhook.
 - **Incoming webhook API** — external applications can push their own alerts in via `POST /api/webhook/post/<name>`, and Nukumizu relays them to the channels that endpoint lists. Each endpoint carries its own token and target channels, and the API is served on a **separate listener** so it can be exposed without exposing the admin API.
 - **Network proxy** — a global proxy URL can be enabled per controller (`networkUseProxy`) for HTTP, WebSocket, and even SMTP (HTTP CONNECT tunnel).
 - **Customizable message templates** — every bot/notification message is rendered from a template in `config.json`, with Markdown formatting switched on per channel.
-- **Storage** — SQLite (pure-Go driver) for `user.db` and `log.db`; safe on network shares (WAL disabled).
+- **Hot reload** — saving settings applies almost everything immediately; the few keys that are only read at startup are reported back as `restartRequired`.
+- **Storage** — SQLite (pure-Go driver) for `user.db` and `log.db`; the rollback journal is used instead of WAL so the files stay safe on network shares.
 - **Dashboard API** — token-authenticated REST API plus an admin-only live log-streaming WebSocket.
-- **Web console** — a Vue 3 admin UI for browsing nodes, editing `config.json`, managing bot trust and webhook endpoints, and tailing logs. The built bundle is embedded in the binary, so a single executable serves both the API and the console.
+- **Web console** — a Vue 3 admin UI for browsing nodes and their per-node options, editing settings, managing bot trust and webhook endpoints, and tailing logs. The built bundle is embedded in the binary, so a single executable serves both the API and the console.
+- **Tests** — the Go packages ship with unit tests (`go test ./...`), including the retry, flap-inhibition and settings-merge paths.
 
 ## How it works
 
-1. On startup Nukumizu logs in to the Komari Dashboard. A failed login aborts the process.
-2. It fetches the node list (name → UUID, static info) and stores it in memory, then opens a WebSocket to poll live status every 5 seconds. If the connection drops it reconnects with exponential backoff; after 5 failed attempts it notifies and keeps retrying.
-3. The node tracker uses the first received snapshot as a baseline so a restart does not produce false "offline" alerts, then fires a status-change event for every real transition.
-4. Each status-change event is rendered through the `SERVER_STATUS_CHANGED` template and sent to all enabled controllers. QQ / Telegram additionally receive a startup welcome and the initial server list.
-5. Every 12 hours the Komari session is re-authenticated; the node list is refreshed every 5 minutes.
+1. On startup Nukumizu loads `config.json`, `bot_user_config.json` and (optionally) `bot_node_config.json`, then logs in to the Komari Dashboard. Login retries transport errors / `429` / `5xx` up to 6 times; a login that still fails aborts the process.
+2. It fetches the node list (name → UUID, static info) and stores it in memory, then opens a WebSocket to `/api/rpc2` and requests the latest status every 5 seconds. If the connection drops it reconnects with exponential backoff (1s, 2s, 4s … capped at 30s); after 5 failed attempts it logs an error and keeps retrying every 30 seconds.
+3. The node tracker waits for the initial snapshot covering every known node before enabling notifications (with a 2-minute safety net), and always treats the very first snapshot as the startup baseline — no alerts are generated for the state found at boot.
+4. Each real transition is rendered through the `SERVER_STATUS_CHANGED` template and sent to all enabled controllers. Before that, the per-node gates from `bot_node_config.json` are applied: `enableStatusNotify` can drop the change entirely, and `flap_tolerant` holds an `Offline` for N seconds — if the node returns in time, both the `Offline` and the `Online` are suppressed.
+5. QQ / Telegram additionally receive a startup welcome message and the initial server list once the first refresh completes, honoring each member's `event_bot_started` preference.
+6. Every 12 hours the Komari session is re-authenticated; the node list is refreshed every 5 minutes.
 
 ## Project structure
 
 ```
 nukumizu-backend/
-├── main.go                       # Entry point, startup sequence, graceful shutdown
+├── main.go                       # Entry point, startup sequence, background tasks, graceful shutdown
 ├── router.go                     # HTTP route registration (main + webhook API)
 ├── config/
-│   ├── config.go                 # Load config files, apply defaults
-│   └── variables.go              # Config schema structs + globals
+│   ├── config.go                 # Load config files, apply defaults, per-node helpers
+│   ├── variables.go              # Config schema structs + atomic config singletons
+│   ├── settings.go               # Settings file read/merge/write, startup-only key detection
+│   ├── webhook.go                # Incoming webhook endpoint helpers (add/modify/delete)
+│   ├── reload.go                 # Reload hooks (logger, controller rebuild)
+│   └── *_test.go                 # Settings merge, concurrency and flap tests
 ├── global/
-│   └── variables.go              # Software build metadata (name/version/developer)
+│   └── variables.go              # Build metadata (name/version/developer) + config paths
 ├── handler/
 │   ├── user.go                   # /api/user/login, /api/user/register
 │   ├── server.go                 # /api/server/list, getInfo, getStatus, exec
@@ -48,7 +59,7 @@ nukumizu-backend/
 │   └── user.go                   # user.db (SQLite) user store
 ├── utils/
 │   ├── auth.go                   # Token management, Auth middleware, JSON responses
-│   └── middleware.go             # Rate limit, CORS, XSS headers, WebSocket auth
+│   └── middleware.go             # Rate limit, CORS, security headers
 ├── postLog/                      # Logging subsystem
 │   ├── postLog.go                # Leveled logger (stdout + broadcast)
 │   ├── database.go               # log.db (SQLite, one table per run)
@@ -63,13 +74,13 @@ nukumizu-backend/
 │   │   ├── client.go             # Komari HTTP/JSON-RPC client (login, nodes, task exec/poll)
 │   │   └── ws.go                 # Komari status WebSocket (poll + reconnect)
 │   ├── node/
-│   │   └── tracker.go            # Thread-safe server state, status-change detection
+│   │   └── tracker.go            # Thread-safe server state, baseline gating, transitions
 │   ├── netproxy/
 │   │   └── netproxy.go           # Unified network proxy for controllers
 │   ├── template/
 │   │   └── template.go           # Message template renderer ({{ variables }})
 │   └── controller/
-│       ├── controller.go         # Manager, Controller / BotController interfaces, alerts
+│       ├── controller.go         # Manager, interfaces, alert routing, flap inhibition
 │       ├── trigger.go            # Command parsing, authorization, routing
 │       ├── processor.go          # Command handlers
 │       ├── utils.go
@@ -78,8 +89,8 @@ nukumizu-backend/
 │           ├── ntfy.go           # ntfy notification pipe
 │           ├── webhook.go        # Outgoing webhook notification pipe
 │           ├── qq_onebot/
-│           │   ├── qq.go         # QQ (NapCat / OneBot 11) bot controller
-│           │   └── onebot.go     # OneBot 11 WebSocket client (events + API)
+│           │   ├── qq.go         # QQ controller (OneBot 11, e.g. NapCat)
+│           │   └── onebot.go     # OneBot 11 WebSocket client (events + actions)
 │           └── telegram/
 │               ├── telegram.go   # Telegram bot controller (go-telegram/bot, long polling)
 │               └── send.go       # Message sending / splitting (Telegram Markdown)
@@ -91,31 +102,33 @@ nukumizu-backend/
         ├── App.vue               # Root component + toast host
         ├── api/index.js          # Wrappers around the REST endpoints
         ├── router/index.js       # Routes and the login guard
+        ├── styles/               # theme.css + ui.css
         ├── utils/                # http/auth/theme/toast/format/runtime helpers
         ├── components/           # Modal, Toggle, editors, ConfigSection, top bar, side bar
-        └── views/                # Login, Overview, Trusted, Settings, WebHooks, Logs
+        └── views/                # Login, Layout, Overview, Trusted, Settings, WebHooks, Logs
 ```
 
 ## Requirements
 
-- Go **1.25** or newer
+- Go **1.27.3** or newer (see `go.mod`)
 - [Node.js](https://nodejs.org) **22** or newer — only needed to build the web console; a prebuilt binary does not require it
 - A running [Komari](https://www.komari.wiki) Dashboard instance reachable from this host
-- For QQ: a [NapCat](https://napneko.github.io/) instance exposing an OneBot 11 forward WebSocket endpoint (`/api` and `/event`)
+- For QQ: an OneBot 11 implementation exposing a forward WebSocket endpoint, e.g. [NapCat](https://napneko.github.io/) (`/api` and `/event`)
 - For Telegram: a bot token from [@BotFather](https://t.me/BotFather)
 
 Key dependencies: `github.com/go-telegram/bot`, `github.com/gorilla/websocket`, `gopkg.in/mail.v2`, `modernc.org/sqlite`.
 
 ## Configuration
 
-There are two configuration files, both read from the working directory unless overridden:
+Three JSON files are read from the working directory. **There are no command-line flags**: the paths are fixed (`config.json`, `bot_user_config.json`, `bot_node_config.json`), so start the program from the directory that holds them.
 
-| File | CLI flag | Default | Purpose |
-|---|---|---|---|
-| `config.json` | `-config` | `config.json` | Core settings: system, Komari, controllers, message templates |
-| `bot_user_config.json` | `-bot-user-config` | `bot_user_config.json` | Per-bot admins / trusted groups and their notification preferences |
+| File | Required | Purpose |
+|---|---|---|
+| `config.json` | Yes | Core settings: system, debug switches, Komari, webhook listener, controllers, message templates, storage paths |
+| `bot_user_config.json` | Yes | Per-bot admins / trusted groups and their notification preferences |
+| `bot_node_config.json` | No | Per-node options (notification switch, flap window). Auto-created on the first node fetch |
 
-> Both files are in `.gitignore` because they contain credentials (Komari password, bot tokens, proxy auth). Start from the samples below and never commit real secrets.
+> All three files are in `.gitignore` because they contain credentials (Komari password, bot tokens, proxy auth). Start from the samples below and never commit real secrets. `bot_node_config.json` is safe to keep, but it is ignored along with the others.
 
 ### `config.json`
 
@@ -128,12 +141,13 @@ There are two configuration files, both read from the working directory unless o
         "networkProxy": "http://127.0.0.1:7890"
     },
     "debug": {
-        "showNapcatMsg": false,
-        "showNapcatAction": false,
+        "showOneBotMsg": false,
+        "showOneBotAction": false,
         "showTelegramMsg": false,
         "showTriggerCmdEcho": true,
         "showKomariTaskEcho": false,
-        "napcatIgnoreSelfMsg": false
+        "oneBotIgnoreSelfMsg": false,
+        "showFlapTolerantEcho": false
     },
     "komari": {
         "dashboardURL": "https://status.example.com",
@@ -150,18 +164,18 @@ There are two configuration files, both read from the working directory unless o
             "example": {
                 "enabled": true,
                 "token": "CHANGE_ME",
-                "notifyPipes": ["qq(napcat)", "telegram", "email", "ntfy"]
+                "notifyPipes": ["qq_onebot", "telegram", "email", "ntfy"]
             }
         }
     },
     "controllerMethod": {
-        "qq(napcat)": {
+        "qq_onebot": {
             "enabled": false,
             "markdown": false,
             "networkUseProxy": false,
-            "napcatAddr": "127.0.0.1",
-            "napcatPort": "3000",
-            "napcatToken": "",
+            "oneBotAddr": "127.0.0.1",
+            "oneBotPort": "3000",
+            "oneBotToken": "",
             "botQQID": 0,
             "listenMethod": "global"
         },
@@ -218,14 +232,21 @@ There are two configuration files, both read from the working directory unless o
 
 Field notes:
 
-- `system.networkProxy` is a **system-wide** proxy URL. A controller only uses it when its own `networkUseProxy` is `true`. Applied to Telegram HTTP polling, QQ OneBot WebSocket, ntfy and webhook requests, and Email SMTP (tunneled via HTTP CONNECT).
+- `controllerMethod` is keyed by channel name: `qq_onebot`, `telegram`, `email`, `ntfy`, `webhook`. The same names are used in `notifyPipes` and in `bot_user_config.json`. The QQ channel speaks OneBot 11, so `oneBotAddr` / `oneBotPort` / `oneBotToken` point at the OneBot implementation (NapCat by default on `127.0.0.1:3000`).
+- `system.networkProxy` is a **system-wide** proxy URL. A controller only uses it when its own `networkUseProxy` is `true`. Applied to Telegram HTTP polling, the QQ OneBot WebSocket, ntfy and webhook requests, and Email SMTP (tunneled via HTTP CONNECT).
 - `webhook` configures the **incoming** webhook API (see [Incoming webhook API](#incoming-webhook-api)); `controllerMethod.webhook` configures the outgoing webhook notification channel. They are independent.
 - `markdown` is a per-channel switch on all five channels. With it `false` (the default) every rendered value is inserted as plain text; with it `true` the values meant to be read verbatim (UUIDs, event messages, commands, command results, alert source and alert content) are wrapped in Markdown code spans / fenced blocks. Nothing is inferred from the channel name, so a channel only ever gets the formatting you asked for — turn it off for a channel whose platform does not render Markdown. On Telegram it also picks the `parse_mode`: with `markdown` off, messages are sent without one, so text containing `*` or `_` is delivered as-is rather than rejected by the API as malformed Markdown.
-- `controllerMethod.qq(napcat).listenMethod` / `telegram.listenMethod` — see [Bot recognition modes](#bot-recognition-modes).
-- `debug` toggles verbose per-channel message/action logging; these only matter in debug builds / `debugMode`.
+- `controllerMethod.qq_onebot.listenMethod` / `telegram.listenMethod` — see [Bot recognition modes](#bot-recognition-modes).
+- `debug` toggles verbose per-module logging; these only matter when `system.debugMode` is `true`:
+  - `showOneBotMsg` / `showOneBotAction` — incoming OneBot messages / outgoing OneBot API calls.
+  - `showTelegramMsg` — incoming Telegram updates.
+  - `showTriggerCmdEcho` — the parsed command handed to the trigger.
+  - `showKomariTaskEcho` — Komari task creation and polling.
+  - `oneBotIgnoreSelfMsg` — ignore the bot's own messages echoed back by OneBot.
+  - `showFlapTolerantEcho` — the flap-inhibition decisions (held / released / reported).
 - `email.useTLS` is kept for configuration compatibility.
-- `dataPath` / `dbPath` default to `./data` and `./db`; `user.db` and `log.db` are created under `dbPath`.
-- Missing keys fall back to built-in defaults (host `0.0.0.0`, port `8080`, webhook API `0.0.0.0:8081`, no webhook endpoints, NapCat `127.0.0.1:3000`, ntfy server `https://ntfy.sh`, webhook method `POST`, etc.). Message templates have built-in fallbacks too. `markdown` defaults to `false`, so add it explicitly for Telegram (see the sample above) to keep its formatting.
+- `dbPath` defaults to `./db`; `user.db` and `log.db` are created under it. `dataPath` defaults to `./data` and is reserved for future file storage — nothing is written there yet.
+- Missing keys fall back to built-in defaults (host `0.0.0.0`, port `8080`, webhook API `0.0.0.0:8081`, no webhook endpoints, OneBot `127.0.0.1:3000`, ntfy server `https://ntfy.sh`, webhook method `POST`, etc.). Message templates have built-in fallbacks too. `markdown` defaults to `false`, so add it explicitly for Telegram (see the sample above) to keep its formatting.
 
 ### `bot_user_config.json`
 
@@ -233,7 +254,7 @@ Admins and trusted groups are defined **per bot channel** and map a member ID to
 
 ```json
 {
-    "qq(napcat)": {
+    "qq_onebot": {
         "admins": {
             "123456789": {
                 "event_status_notify": true,
@@ -272,9 +293,30 @@ Admins and trusted groups are defined **per bot channel** and map a member ID to
 - **Telegram**: member IDs may be `@username` (resolved to the numeric user ID once that user has messaged the bot) or the numeric user ID; group IDs are the numeric chat ID (supergroups are negative).
 - Per-member options:
   - `event_status_notify` — receive server `Online`/`Offline` push notifications.
-  - `event_bot_started` — receive the automatic startup message (welcome + initial server list).
+  - `event_bot_started` — receive the automatic startup messages (welcome + initial server list).
   - `event_reply` — reserved for opting out of replies to that member's own commands.
 - Admins of a channel also appear in every trusted-group/private-chat context where the bot sends notifications.
+
+### `bot_node_config.json`
+
+Per-node options, keyed by the node UUID that Komari reports:
+
+```json
+{
+    "0f2a9c1e-1234-4a5b-8c9d-000000000001": {
+        "enableStatusNotify": false,
+        "flap_tolerant": 30
+    },
+    "7d3b8f20-5678-4c9d-9e0f-000000000002": {}
+}
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `enableStatusNotify` | `true` | When `false`, **no** status-change notification is sent for this node — through chat bots and notification pipes alike. Omit it (or the whole entry) to keep notifications on. |
+| `flap_tolerant` | `0` | Seconds an `Offline` notification is held (float allowed, capped at 86400). If the node comes back within the window, both the `Offline` and the `Online` are suppressed; if it is still down when the window elapses, the `Offline` is sent then. `0` or an absent field notifies immediately. |
+
+The file is auto-generated: every node fetch (`FetchNodes` — startup, reconnect and the 5-minute refresh) adds newly seen UUIDs as `{}` and never overwrites an existing entry, so hand-written options survive. Missing or empty files are fine — every node then keeps the defaults above. The **Nodes** page of the console edits both options, or use `POST /api/settings/set?type=bot_node_config`.
 
 ### Message templates
 
@@ -300,11 +342,11 @@ Saving settings applies most of them immediately. How each group takes effect:
 
 | Settings | How it applies |
 |---|---|
-| `controllerMethod` (all five channels) | Every channel is **rebuilt**: the running controllers are stopped and a fresh set is built from the new settings. A channel that owns a connection reconnects — Telegram re-runs its `getMe` handshake, NapCat opens a new WebSocket — so notifications sent during the swap are lost. The rebuild only happens when this section actually changed; saving a message template does not disturb the channels. |
-| `controllerMessage`, `debug`, `bot_user_config.json`, `bot_node_config.json`, `webhook.endpoints` | Picked up as they are used; nothing is restarted. |
+| `controllerMethod` (all five channels) | Every channel is **rebuilt**: the running controllers are stopped and a fresh set is built from the new settings. A channel that owns a connection reconnects — Telegram re-runs its `getMe` handshake, OneBot opens a new WebSocket — so notifications sent during the swap are lost. The rebuild only happens when this section actually changed; saving a message template does not disturb the channels. |
+| `controllerMessage`, `debug`, `bot_user_config.json`, `bot_node_config.json`, `webhook.endpoints` | Picked up as they are used; nothing is restarted. A flap window or notification switch edited while an `Offline` is held is re-read when the hold fires. |
 | `system.debugMode` | Applies to both behavior and log filtering. |
 | `system.networkProxy` | Read on every request and every dial, so a new address reaches channels that are already running. Only the per-channel `networkUseProxy` opt-in is fixed when a channel is built, so toggling that still needs the rebuild above. |
-| `system.listenAddr` / `listenPort`, `webhook.enabled` / `listenAddr` / `listenPort`, `dataPath`, `dbPath`, `komari.dashboardURL` | **Applied at startup only.** Saving them changes the file and the in-memory configuration but not the running listener, database or Komari client — restart to apply. |
+| `system.listenAddr` / `listenPort`, `webhook.enabled` / `listenAddr` / `listenPort`, `komari.dashboardURL`, `dataPath`, `dbPath` | **Applied at startup only.** Saving them changes the file and the in-memory configuration but not the running listener, database or Komari client — restart to apply. `/api/settings/set` reports them back in `restartRequired`. |
 
 ## API
 
@@ -329,12 +371,12 @@ Browser WebSocket handshakes cannot carry custom headers, so `/api/system/getLog
 |---|---|---|---|
 | `/api/user/login` | POST | None | Log in. Body `{username, password}`. Returns `data: {token, userID, username, level, registerDate}`. |
 | `/api/user/register` | POST | None | Register the first user. Body `{username, password}`. Only allowed while no user exists; otherwise `403`. Returns `data: {token, userID, username, level}`. |
-| `/api/server/list` | GET | bot / admin | List all monitored servers. |
-| `/api/server/getInfo` | GET | admin | Static server info (mirrors the Bot's `/info`). Query `?uuid=<uuid>` (or `all`). Returns `data: {<uuid>: {uuid, name, info}}` — one entry per requested server. `404` for an unknown single uuid. |
-| `/api/server/getStatus` | GET | admin | Live server status (mirrors the Bot's `/status`). Query `?uuid=<uuid>` (or `all`). Returns `data: {<uuid>: {uuid, name, online, report}}`; `report` is `null` when the node has not reported yet. `404` for an unknown single uuid. |
+| `/api/server/list` | GET | bot / admin | List all monitored servers as rendered text (`data.list`, same output as the bot's `/list`). |
+| `/api/server/getInfo` | GET | admin | Static server info (mirrors the bot's `/info`). Query `?uuid=<uuid>` (or `all`). Returns `data: {<uuid>: {uuid, name, info}}` — one entry per requested server. `404` for an unknown single uuid. |
+| `/api/server/getStatus` | GET | admin | Live server status (mirrors the bot's `/status`). Query `?uuid=<uuid>` (or `all`). Returns `data: {<uuid>: {uuid, name, online, report}}`; `report` is `null` when the node has not reported yet. `404` for an unknown single uuid. |
 | `/api/server/exec` | POST | bot / admin | Execute a command. Body `{uuid: [<uuid>...], command}`. Dispatches a Komari task and polls until completion (or timeout). Returns `data: {taskID, results}`. |
-| `/api/settings/get` | GET | admin | `?type=global\|bot_user_config\|bot_node_config` | Returns `data: {config}`, where `config` is the selected config file's content (same layout as the JSON file). |
-| `/api/settings/set` | POST | admin | `?type=<same types>` + JSON body of partial updates, e.g. `{"system":{"debugMode":true}}` | Deep-merges the body into the selected config file, persists it, and reloads it in memory. Only the given keys change; arrays replace. Returns `data: {type, restartRequired}`, where `restartRequired` lists the keys the update changed that are only read at startup (see [What applies without a restart](#what-applies-without-a-restart)) — the write succeeds regardless, this only says which edits are not live yet. Always an array, empty when everything took effect. |
+| `/api/settings/get` | GET | admin | `?type=global\|bot_user_config\|bot_node_config` — returns `data: {config}`, the selected config file's content (same layout as the JSON file). |
+| `/api/settings/set` | POST | admin | `?type=<same types>` + JSON body of partial updates, e.g. `{"system":{"debugMode":true}}` — deep-merges the body into the selected file, persists it, and reloads it in memory. Only the given keys change; arrays replace, and a `null` deletes a key. Returns `data: {type, restartRequired}`, where `restartRequired` lists the keys the update changed that are only read at startup (see [What applies without a restart](#what-applies-without-a-restart)) — the write succeeds regardless, this only says which edits are not live yet. Always an array, empty when everything took effect. |
 | `/api/webhook/add` | POST | admin | Add an incoming webhook endpoint. Body `{name, enabled?, token?, notifyPipes?}` — only the fields given are stored, the rest start at their defaults. `409` when the name is already configured. |
 | `/api/webhook/modify` | POST | admin | Change an existing endpoint. Body `{name, ...}` — the fields given are the fields that change (same partial-update rule as `/api/settings/set`, but scoped to one endpoint). `404` for an unknown name, `400` when no other field is given. |
 | `/api/webhook/delete` | POST | admin | Remove an endpoint. Body `{name}`. `404` for an unknown name. |
@@ -344,10 +386,10 @@ Browser WebSocket handshakes cannot carry custom headers, so `/api/system/getLog
 
 Middleware applied to the whole server:
 
-- **Rate limit** — token bucket, 100 requests/minute per client IP.
+- **Rate limit** — token bucket, 100 requests/minute per client IP (`429` when exceeded).
 - **CORS** — `Access-Control-Allow-Origin: *`, allows `Content-Type`, `X-Token`, `X-Timestamp`, `Authorization`.
 - **Security headers** — `X-XSS-Protection`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, a restrictive CSP.
-- **WebSocket auth** — `utils.WebSocketAuthMiddleware` is attached to `/api/system/getLogs` (route-level, not global): it authenticates the upgrade request and requires an `admin` token before the connection is handed to the log handler.
+- **WebSocket auth** — the log endpoint is wrapped in an admin-only auth middleware at route level, so an unauthorized client is rejected before the upgrade.
 
 ### Incoming webhook API
 
@@ -359,15 +401,15 @@ The console's **WebHooks** page manages the listener settings and the endpoints.
 |---|---|---|---|
 | `/api/webhook/post/<name>` | POST | Endpoint token | Relay an alert to the channels the endpoint lists in `notifyPipes`. Body `{token, subject, content}`. Returns `data: {endpoint, channels}`. |
 
-Every entry under `webhook.endpoints` is one endpoint, addressed by its key as the last path segment: the key `example` is served at `POST /api/webhook/post/example`. The `post/` segment keeps the endpoints' own namespace separate from the management routes (`/api/webhook/add` and friends), which live on the admin listener. Endpoints are managed over the admin API (`/api/webhook/add`, `modify`, `delete` and `list` — see [Endpoints](#endpoints)), which writes the same `webhook.endpoints` section of `config.json`; a newly added endpoint accepts requests as soon as the configuration is reloaded, without a restart. An endpoint holds:
+Every entry under `webhook.endpoints` is one endpoint, addressed by its key as the last path segment: the key `example` is served at `POST /api/webhook/post/example`. The `post/` segment keeps the endpoints' own namespace separate from the management routes (`/api/webhook/add` and friends), which live on the admin listener. Endpoints are managed over the admin API, which writes the same `webhook.endpoints` section of `config.json`; a newly added endpoint accepts requests as soon as the configuration is reloaded, without a restart. An endpoint holds:
 
 | Field | Meaning |
 |---|---|
 | `enabled` | Whether the endpoint accepts requests. A disabled endpoint answers `403`. |
 | `token` | Shared secret the caller sends as the `token` body field; compared in constant time. An endpoint with an empty token answers `500` instead of accepting requests from anyone. |
-| `notifyPipes` | The channels the alert is delivered to, named as in `controllerMethod`: `qq(napcat)`, `telegram`, `email`, `ntfy`, `webhook`. A channel that is unknown or disabled is skipped and reported. |
+| `notifyPipes` | The channels the alert is delivered to, named as in `controllerMethod`: `qq_onebot`, `telegram`, `email`, `ntfy`, `webhook`. A channel that is unknown or disabled is skipped and reported. |
 
-The management API accepts exactly these three fields. A request naming any other field, or giving one of them the wrong type (`enabled` must be a boolean, `token` a string, `notifyPipes` an array of strings), is refused with `400` instead of being written to `config.json` — a field the program does not understand must not end up in the file. A `name` must be non-empty and free of `/`, since it becomes the last segment of the endpoint URL.
+The management API accepts exactly these three fields. A request naming any other field, or giving one of them the wrong type (`enabled` must be a boolean, `token` a string, `notifyPipes` an array of strings), is refused with `400` instead of being written to `config.json` — a field the program does not understand must not end up in the file. A `name` must be non-empty and free of `/`, since it becomes the last segment of the endpoint URL. Request bodies are capped at 1 MiB.
 
 The alert is rendered per channel as:
 
@@ -387,7 +429,7 @@ Status codes: `200` delivered, `400` malformed body or empty `subject`/`content`
 
 ## Bots
 
-QQ (NapCat) and Telegram bots share one command engine and authorization pipeline, implemented in `internal/controller/`. NapCat speaks OneBot 11 over WebSocket (event stream + actions); Telegram uses `go-telegram/bot` long polling.
+QQ (OneBot 11) and Telegram bots share one command engine and authorization pipeline, implemented in `internal/controller/`. The QQ controller speaks OneBot 11 over WebSocket (event stream + actions), so it works with NapCat or any compatible implementation; Telegram uses `go-telegram/bot` long polling.
 
 ### Permission model
 
@@ -416,13 +458,15 @@ QQ (NapCat) and Telegram bots share one command engine and authorization pipelin
 
 ## Notification channels
 
-QQ and Telegram are *interactive* channels. Email, ntfy, and webhook are **status-only** channels — they receive server status-change alerts but cannot run commands. On startup, the welcome message and initial server list are delivered only to the bot channels (QQ / Telegram), honoring each member's `event_bot_started` preference.
+QQ and Telegram are *interactive* channels. Email, ntfy, and webhook are **status-only** channels — they receive status-change alerts but cannot run commands. On startup, the welcome message and initial server list are delivered only to the bot channels (QQ / Telegram), honoring each member's `event_bot_started` preference.
 
 All five channels can also carry an alert submitted by an external application through the [incoming webhook API](#incoming-webhook-api). A bot channel delivers it to the groups and admins configured for that channel; a status-only channel delivers it to its configured destination (mail recipients, ntfy topic, outgoing webhook URL). Markdown formatting is decided per channel by its `markdown` setting, never by the channel's name.
 
+Status-change notifications pass through the per-node gates in `bot_node_config.json` first (`enableStatusNotify`, `flap_tolerant`), so both chat bots and status-only channels see exactly the same filtered stream.
+
 ## Building
 
-Requires Go 1.25+ and — to build the web console — Node.js 22+.
+Requires Go 1.27.3+ and — to build the web console — Node.js 22+.
 
 Helper scripts in the repo root build the Vue console first, then compile the backend with it embedded. They also bake the current git commit and build time into the binary via `-ldflags`. The name states the **target** platform, and each target has a Windows (`.bat`) and a Linux/macOS (`.sh`) flavor: run the flavor for the host you are building on, since every script cross-compiles to its target.
 
@@ -469,25 +513,28 @@ CI (`.github/workflows/build.yml`) runs both flavors — `.sh` on `ubuntu-latest
 
 ## Running
 
-Both `config.json` and `bot_user_config.json` must exist in the working directory (or be passed explicitly):
+All three config files are read from the working directory; there are no path flags:
 
 ```bash
-# Development (uses go run, so config files must be in the CWD)
-run.bat
+# Development (go run, so the config files must be in the CWD)
+./run.sh          # Linux / macOS
+run.bat           # Windows
 
-# Or build first, then run a binary
-./nukumizu-linux-amd64 -config config.json -bot-user-config bot_user_config.json
+# Or build first, then run the binary
+./nukumizu-linux-amd64
 ```
 
-On startup the program logs in to Komari, loads node state, connects the status WebSocket, then starts each enabled controller and the HTTP server on `listenAddr:listenPort`. Press `Ctrl+C` for a graceful shutdown.
+`run.sh` / `run.bat` only run the Go backend — they do not build the console, so `web/dist` must already exist (run any `build-*` script once, or `npm run build` in `frontend/`) or the build fails.
+
+On startup the program logs in to Komari, loads node state, connects the status WebSocket, then starts each enabled controller and the HTTP server on `listenAddr:listenPort`. Press `Ctrl+C` for a graceful shutdown. The incoming webhook listener starts separately when `webhook.enabled` is `true`; a failure to bind it is logged without stopping the rest of the program.
 
 ### Frontend development
 
-`run.bat` only runs the Go backend — it does not build the console, so `web/dist` must already exist (run any `build-*` script once, or `npm run build` in `frontend/`) or `go run` fails to compile. While working on the frontend, run the two sides separately:
+While working on the frontend, run the two sides separately:
 
 ```bash
 # Terminal 1 — backend (API + WebSocket) on :8080
-run.bat
+./run.sh
 
 # Terminal 2 — Vite dev server with hot reload on :5173
 cd frontend
@@ -502,6 +549,18 @@ NUKUMIZU_API=http://192.168.1.10:8080 npm run dev
 ```
 
 For a production build the Go server serves the embedded console itself, on the normal listen address — see [Building](#building). Vite is not involved at runtime, so `npm run build` alone does not change what a running binary serves: rebuild the binary to pick up frontend changes.
+
+## Testing
+
+```bash
+go test ./...
+```
+
+The suite runs against the config, handler, node-tracker, controller and pipe packages. It needs no Komari instance or network access.
+
+## Changelog
+
+Release notes and the commits behind each version live in [changeLogs.md](changeLogs.md).
 
 ## License
 
