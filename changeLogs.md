@@ -1,42 +1,43 @@
 ## Ver.0.2.3.8
 ### Features
-- [Add retry attemption when login to Komari Dashboard failed]
+- Add retry attemption when login to Komari Dashboard failed ([a7f5fac](https://github.com/MadobiNanami/Nukumizu/commit/a7f5fac1d4a33506d5b2f293ad8f8fef150d4ee9) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/a7f5fac1d4a33506d5b2f293ad8f8fef150d4ee9))
+- Add retry attemption when fetching nodes from dashboard ([064524e](https://github.com/MadobiNanami/Nukumizu/commit/064524e9912700f35b670dcd09e99199daa9c12c) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/064524e9912700f35b670dcd09e99199daa9c12c))
 
 ## Ver.0.2.2.7-8c2159f.pre-release
 ### Features
-- [Add flap inhibiton for nodes]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/03e74f49c36ba05995651135bd0f472b95bfede6")
-- [Put all node-related settings into a seperate dialog box]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/1a7a4cdc073cccec4aa5fb61e139919b0c757dbe")
+- Add flap inhibiton for nodes ([03e74f4](https://github.com/MadobiNanami/Nukumizu/commit/03e74f49c36ba05995651135bd0f472b95bfede6) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/03e74f49c36ba05995651135bd0f472b95bfede6))
+- Put all node-related settings into a seperate dialog box ([1a7a4cd](https://github.com/MadobiNanami/Nukumizu/commit/1a7a4cdc073cccec4aa5fb61e139919b0c757dbe) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/1a7a4cdc073cccec4aa5fb61e139919b0c757dbe))
 
 ## Ver.0.2.1.6-d06d0bc.pre-release
 ### Features
 - Most of settings now support hot reload when changed
-  - [Network proxy]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/457ea424178b397f5509578d6180da437aaed075")
-  - [Controllers]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/2a5a46a9846c5afe8ac3c66dc42164ddea25c038")
-- [Only log node count when it changed]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/aa7e7f87e17f17ff2f64aa1823a00a291628d4eb")
+  - Network proxy ([457ea42](https://github.com/MadobiNanami/Nukumizu/commit/457ea424178b397f5509578d6180da437aaed075) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/457ea424178b397f5509578d6180da437aaed075))
+  - Controllers ([2a5a46a](https://github.com/MadobiNanami/Nukumizu/commit/2a5a46a9846c5afe8ac3c66dc42164ddea25c038) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/2a5a46a9846c5afe8ac3c66dc42164ddea25c038))
+- Only log node count when it changed ([aa7e7f8](https://github.com/MadobiNanami/Nukumizu/commit/aa7e7f87e17f17ff2f64aa1823a00a291628d4eb) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/aa7e7f87e17f17ff2f64aa1823a00a291628d4eb))
 
 ### Bug Fixes
-- [Resolve the proxy address per request]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/457ea424178b397f5509578d6180da437aaed075")
+- Resolve the proxy address per request ([457ea42](https://github.com/MadobiNanami/Nukumizu/commit/457ea424178b397f5509578d6180da437aaed075) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/457ea424178b397f5509578d6180da437aaed075))
 
 ## Ver.0.2.0.5-661cf08.pre-release
 ### Features
-- [Enhance security of websocket log system]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/da467c9297e641e2ab9a1889252589503791b7e9")
-- [Implement incoming webhook API interface with configurable endpoints]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/48533404fac20c23134e3ec1d3305ebdf4423c80")
-- [Implement webhook API settings and configuration in frontend webpage]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/6046fb5f882c108b7e94e9537bc15de288bd204b")
+- Enhance security of websocket log system ([da467c9](https://github.com/MadobiNanami/Nukumizu/commit/da467c9297e641e2ab9a1889252589503791b7e9) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/da467c9297e641e2ab9a1889252589503791b7e9))
+- Implement incoming webhook API interface with configurable endpoints ([4853340](https://github.com/MadobiNanami/Nukumizu/commit/48533404fac20c23134e3ec1d3305ebdf4423c80) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/48533404fac20c23134e3ec1d3305ebdf4423c80))
+- Implement webhook API settings and configuration in frontend webpage ([6046fb5](https://github.com/MadobiNanami/Nukumizu/commit/6046fb5f882c108b7e94e9537bc15de288bd204b) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/6046fb5f882c108b7e94e9537bc15de288bd204b))
 
 ## Ver.0.1.2.4-a6f3107.pre-release
 ### Bug Fixes
-- [Integrate frontend build into backend binary]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/cc4aebde6a5a4fba5eeb65ff2feccdd06dc6529d")
+- Integrate frontend build into backend binary ([cc4aebd](https://github.com/MadobiNanami/Nukumizu/commit/cc4aebde6a5a4fba5eeb65ff2feccdd06dc6529d) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/cc4aebde6a5a4fba5eeb65ff2feccdd06dc6529d))
 
 
 ## Ver.0.1.2.3-1c4ad61.pre-release
 ### Features
-- [Add frontend webpage to make everything easy to control]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/a90b4f5497dfae5f9b6a3132d091a528fdbdf612")
-- [Add scripts for building frontend and backend for Linux and Windows]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/b970d66bc091b44b29ee0781888eb5b253b78aa6")
+- Add frontend webpage to make everything easy to control ([a90b4f5](https://github.com/MadobiNanami/Nukumizu/commit/a90b4f5497dfae5f9b6a3132d091a528fdbdf612) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/a90b4f5497dfae5f9b6a3132d091a528fdbdf612))
+- Add scripts for building frontend and backend for Linux and Windows ([b970d66](https://github.com/MadobiNanami/Nukumizu/commit/b970d66bc091b44b29ee0781888eb5b253b78aa6) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/b970d66bc091b44b29ee0781888eb5b253b78aa6))
 
 ### Bug Fixes
-- [Update API response structure to nest payloads under a single "data" key]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/bc7eb9dfdd5b98c0264aa6b5970cf0adb106aeb1")
+- Update API response structure to nest payloads under a single "data" key ([bc7eb9d](https://github.com/MadobiNanami/Nukumizu/commit/bc7eb9dfdd5b98c0264aa6b5970cf0adb106aeb1) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/bc7eb9dfdd5b98c0264aa6b5970cf0adb106aeb1))
 
 
 ## Ver.0.1.1.2-15f1ee3.pre-release
 ### Features
-- [Add per-node notify switch controller]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/6a0c2d1fc4b0fefa7eebc0b5a25a888817a186ca")
+- Add per-node notify switch controller ([6a0c2d1](https://github.com/MadobiNanami/Nukumizu/commit/6a0c2d1fc4b0fefa7eebc0b5a25a888817a186ca) · [gitea](https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/6a0c2d1fc4b0fefa7eebc0b5a25a888817a186ca))
