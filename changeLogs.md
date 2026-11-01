@@ -1,3 +1,7 @@
+## Ver.0.2.3.8
+### Features
+- [Add retry attemption when login to Komari Dashboard failed]
+
 ## Ver.0.2.2.7-8c2159f.pre-release
 ### Features
 - [Add flap inhibiton for nodes]("https://gitea.nanami.tech/NanamiAdmin/Nukumizu/commit/03e74f49c36ba05995651135bd0f472b95bfede6")

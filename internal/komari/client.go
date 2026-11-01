@@ -3,6 +3,7 @@ package komari
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,8 +45,8 @@ type NodeInfo struct {
 	SwapTotal        int64   `json:"swap_total"`
 	DiskTotal        int64   `json:"disk_total"`
 	Weight           float64 `json:"weight"`
-	IPv4			 string  `json:"ipv4"`
-	IPv6			 string  `json:"ipv6"`
+	IPv4             string  `json:"ipv4"`
+	IPv6             string  `json:"ipv6"`
 	Price            float64 `json:"price"`
 	BillingCycle     int     `json:"billing_cycle"`
 	AutoRenewal      bool    `json:"auto_renewal"`
@@ -73,32 +74,32 @@ type TaskResult struct {
 
 // ClientInfo holds client information returned with task results.
 type ClientInfo struct {
-	Name             string `json:"name"`
-	CPUName          string `json:"cpu_name"`
-	Virtualization   string `json:"virtualization"`
-	Arch             string `json:"arch"`
-	CPUCores         int    `json:"cpu_cores"`
-	CPUPhysicalCores int    `json:"cpu_physical_cores"`
-	OS               string `json:"os"`
-	KernelVersion    string `json:"kernel_version"`
-	GPUName          string `json:"gpu_name"`
-	Region           string `json:"region"`
-	MemTotal         int64  `json:"mem_total"`
-	SwapTotal        int64  `json:"swap_total"`
-	DiskTotal        int64  `json:"disk_total"`
-	Weight           int    `json:"weight"`
-	Price            int    `json:"price"`
-	BillingCycle     int    `json:"billing_cycle"`
-	AutoRenewal      bool   `json:"auto_renewal"`
-	Currency         string `json:"currency"`
+	Name             string  `json:"name"`
+	CPUName          string  `json:"cpu_name"`
+	Virtualization   string  `json:"virtualization"`
+	Arch             string  `json:"arch"`
+	CPUCores         int     `json:"cpu_cores"`
+	CPUPhysicalCores int     `json:"cpu_physical_cores"`
+	OS               string  `json:"os"`
+	KernelVersion    string  `json:"kernel_version"`
+	GPUName          string  `json:"gpu_name"`
+	Region           string  `json:"region"`
+	MemTotal         int64   `json:"mem_total"`
+	SwapTotal        int64   `json:"swap_total"`
+	DiskTotal        int64   `json:"disk_total"`
+	Weight           int     `json:"weight"`
+	Price            int     `json:"price"`
+	BillingCycle     int     `json:"billing_cycle"`
+	AutoRenewal      bool    `json:"auto_renewal"`
+	Currency         string  `json:"currency"`
 	ExpiredAt        *string `json:"expired_at"`
-	Group            string `json:"group"`
-	Tags             string `json:"tags"`
-	Hidden           bool   `json:"hidden"`
-	TrafficLimit     int64  `json:"traffic_limit"`
-	TrafficLimitType string `json:"traffic_limit_type"`
-	CreatedAt        string `json:"created_at"`
-	UpdatedAt        string `json:"updated_at"`
+	Group            string  `json:"group"`
+	Tags             string  `json:"tags"`
+	Hidden           bool    `json:"hidden"`
+	TrafficLimit     int64   `json:"traffic_limit"`
+	TrafficLimitType string  `json:"traffic_limit_type"`
+	CreatedAt        string  `json:"created_at"`
+	UpdatedAt        string  `json:"updated_at"`
 }
 
 // KomariResponse is the standard response envelope from Komari API.
@@ -136,27 +137,106 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// Login authenticates to Komari and stores the session token cookie.
+// loginMaxAttempts bounds how many times Login tries before giving up.
+const loginMaxAttempts = 6
+
+// retryableLoginError marks a login failure worth retrying: transport errors,
+// rate limiting and 5xx responses. A rejected credential or a malformed
+// response is not retryable, so Login fails fast instead of hammering Komari
+// (which could trip account lockout or rate limits).
+type retryableLoginError struct {
+	err error
+}
+
+func (e *retryableLoginError) Error() string { return e.err.Error() }
+
+func (e *retryableLoginError) Unwrap() error { return e.err }
+
+func retryableLoginErrorf(format string, args ...any) error {
+	return &retryableLoginError{err: fmt.Errorf(format, args...)}
+}
+
+// isRetryableLoginError reports whether err was produced by a failure that
+// another attempt may resolve.
+func isRetryableLoginError(err error) bool {
+	var retryable *retryableLoginError
+	return errors.As(err, &retryable)
+}
+
+// truncateBody keeps error messages readable when a proxy or gateway answers
+// with an unexpected (possibly HTML) payload.
+func truncateBody(body []byte) string {
+	const limit = 512
+	if len(body) > limit {
+		return string(body[:limit]) + "..."
+	}
+	return strings.TrimSpace(string(body))
+}
+
+// Login authenticates to Komari and stores the session token cookie. Transport
+// errors, 429 and 5xx responses are retried with linear backoff; credential or
+// protocol failures return immediately.
 func (c *Client) Login(username, password string) error {
 	postLog.Info("Logging into Komari Dashboard at " + c.baseURL)
 
+	var lastErr error
+	for attempt := 1; attempt <= loginMaxAttempts; attempt++ {
+		if err := c.loginOnce(username, password); err != nil {
+			lastErr = err
+			if !isRetryableLoginError(err) || attempt == loginMaxAttempts {
+				break
+			}
+			postLog.Warning(fmt.Sprintf("Komari login attempt %d/%d failed, retrying: %v", attempt, loginMaxAttempts, err))
+			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+			continue
+		}
+
+		postLog.Info("Successfully logged into Komari Dashboard")
+		return nil
+	}
+
+	// Drop any stale token so callers cannot keep using a dead session.
+	c.mu.Lock()
+	c.sessionToken = ""
+	c.mu.Unlock()
+
+	return fmt.Errorf("komari login failed after %d attempts: %w", loginMaxAttempts, lastErr)
+}
+
+// loginOnce performs a single login round trip. The response body is closed
+// before returning so retries never accumulate open connections.
+func (c *Client) loginOnce(username, password string) error {
 	body := map[string]string{
 		"username": username,
 		"password": password,
 	}
-	bodyJSON, _ := json.Marshal(body)
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal komari login request: %w", err)
+	}
 
 	resp, err := c.httpClient.Post(c.baseURL+"/api/login", "application/json", bytes.NewReader(bodyJSON))
 	if err != nil {
-		return fmt.Errorf("komari login request failed: %w", err)
+		return retryableLoginErrorf("komari login request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return retryableLoginErrorf("failed to read komari login response: %w", err)
+	}
+
+	switch {
+	case resp.StatusCode == http.StatusTooManyRequests, resp.StatusCode >= 500:
+		return retryableLoginErrorf("komari login request failed: unexpected status code %d: %s", resp.StatusCode, truncateBody(respBody))
+	case resp.StatusCode != http.StatusOK:
+		return fmt.Errorf("komari login request failed: unexpected status code %d: %s", resp.StatusCode, truncateBody(respBody))
+	}
+
 	var kr KomariResponse
-	if err := json.NewDecoder(resp.Body).Decode(&kr); err != nil {
+	if err := json.Unmarshal(respBody, &kr); err != nil {
 		if config.IsDebugMode() {
-			respBody, _ := io.ReadAll(resp.Body)
-			return fmt.Errorf("failed to parse komari login response: %w.\nResponse: %s", err, respBody)
+			return fmt.Errorf("failed to parse komari login response: %w.\nResponse: %s", err, truncateBody(respBody))
 		}
 		return fmt.Errorf("failed to parse komari login response: %w", err)
 	}
@@ -171,7 +251,6 @@ func (c *Client) Login(username, password string) error {
 			c.mu.Lock()
 			c.sessionToken = cookie.Value
 			c.mu.Unlock()
-			postLog.Info("Successfully logged into Komari Dashboard")
 			return nil
 		}
 	}

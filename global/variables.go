@@ -14,9 +14,9 @@ type SoftwareInfoStr struct {
 
 var SoftwareInfo = SoftwareInfoStr{
 	Name:        "Nukumizu",
-	Version:     "0.2.2",
+	Version:     "0.2.3",
 	Developer:   "Madobi Nanami",
-	BuildVer:    7,
+	BuildVer:    8,
 	CommitHash:  "unknown",
 	Description: "Remote server monitoring and command execution subsystem for Komari",
 	BuildType:   "pre-release",
@@ -24,13 +24,13 @@ var SoftwareInfo = SoftwareInfoStr{
 }
 
 type ConfigPathStr struct {
-	Global		  	string
-	BotUserConfig 	string
-	BotNodeConfig	string
+	Global        string
+	BotUserConfig string
+	BotNodeConfig string
 }
 
 var ConfigPath = ConfigPathStr{
-	Global:		  	"config.json",
-	BotUserConfig: 	"bot_user_config.json",
-	BotNodeConfig:	"bot_node_config.json",
+	Global:        "config.json",
+	BotUserConfig: "bot_user_config.json",
+	BotNodeConfig: "bot_node_config.json",
 }
