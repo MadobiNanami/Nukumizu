@@ -1,6 +1,6 @@
 module nukumizu-backend
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/go-telegram/bot v1.25.0
