@@ -137,30 +137,53 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// loginMaxAttempts bounds how many times Login tries before giving up.
-const loginMaxAttempts = 6
+// retryMaxAttempts bounds how many times a request is tried before giving up.
+const retryMaxAttempts = 6
 
-// retryableLoginError marks a login failure worth retrying: transport errors,
-// rate limiting and 5xx responses. A rejected credential or a malformed
-// response is not retryable, so Login fails fast instead of hammering Komari
-// (which could trip account lockout or rate limits).
-type retryableLoginError struct {
+// retryBackoff is the linear backoff step between attempts: the n-th retry
+// waits n*retryBackoff.
+const retryBackoff = 500 * time.Millisecond
+
+// retryableError marks a failure worth retrying: transport errors, rate
+// limiting and 5xx responses. Rejected credentials, 4xx responses and
+// malformed payloads are not retryable, so callers fail fast instead of
+// hammering Komari (which could trip account lockout or rate limits).
+type retryableError struct {
 	err error
 }
 
-func (e *retryableLoginError) Error() string { return e.err.Error() }
+func (e *retryableError) Error() string { return e.err.Error() }
 
-func (e *retryableLoginError) Unwrap() error { return e.err }
+func (e *retryableError) Unwrap() error { return e.err }
 
-func retryableLoginErrorf(format string, args ...any) error {
-	return &retryableLoginError{err: fmt.Errorf(format, args...)}
+func retryableErrorf(format string, args ...any) error {
+	return &retryableError{err: fmt.Errorf(format, args...)}
 }
 
-// isRetryableLoginError reports whether err was produced by a failure that
-// another attempt may resolve.
-func isRetryableLoginError(err error) bool {
-	var retryable *retryableLoginError
+// isRetryableError reports whether err was produced by a failure that another
+// attempt may resolve.
+func isRetryableError(err error) bool {
+	var retryable *retryableError
 	return errors.As(err, &retryable)
+}
+
+// doWithRetry runs fn until it succeeds, fails with a non-retryable error, or
+// exhausts retryMaxAttempts attempts. what names the operation in logs and in
+// the returned error.
+func doWithRetry(what string, fn func() error) error {
+	var lastErr error
+	for attempt := 1; ; attempt++ {
+		if err := fn(); err != nil {
+			lastErr = err
+			if !isRetryableError(err) || attempt == retryMaxAttempts {
+				return fmt.Errorf("%s failed after %d attempt(s): %w", what, attempt, lastErr)
+			}
+			postLog.Warning(fmt.Sprintf("%s attempt %d/%d failed, retrying: %v", what, attempt, retryMaxAttempts, err))
+			time.Sleep(time.Duration(attempt) * retryBackoff)
+			continue
+		}
+		return nil
+	}
 }
 
 // truncateBody keeps error messages readable when a proxy or gateway answers
@@ -179,28 +202,19 @@ func truncateBody(body []byte) string {
 func (c *Client) Login(username, password string) error {
 	postLog.Info("Logging into Komari Dashboard at " + c.baseURL)
 
-	var lastErr error
-	for attempt := 1; attempt <= loginMaxAttempts; attempt++ {
-		if err := c.loginOnce(username, password); err != nil {
-			lastErr = err
-			if !isRetryableLoginError(err) || attempt == loginMaxAttempts {
-				break
-			}
-			postLog.Warning(fmt.Sprintf("Komari login attempt %d/%d failed, retrying: %v", attempt, loginMaxAttempts, err))
-			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
-			continue
-		}
-
-		postLog.Info("Successfully logged into Komari Dashboard")
-		return nil
+	err := doWithRetry("komari login", func() error {
+		return c.loginOnce(username, password)
+	})
+	if err != nil {
+		// Drop any stale token so callers cannot keep using a dead session.
+		c.mu.Lock()
+		c.sessionToken = ""
+		c.mu.Unlock()
+		return err
 	}
 
-	// Drop any stale token so callers cannot keep using a dead session.
-	c.mu.Lock()
-	c.sessionToken = ""
-	c.mu.Unlock()
-
-	return fmt.Errorf("komari login failed after %d attempts: %w", loginMaxAttempts, lastErr)
+	postLog.Info("Successfully logged into Komari Dashboard")
+	return nil
 }
 
 // loginOnce performs a single login round trip. The response body is closed
@@ -217,18 +231,18 @@ func (c *Client) loginOnce(username, password string) error {
 
 	resp, err := c.httpClient.Post(c.baseURL+"/api/login", "application/json", bytes.NewReader(bodyJSON))
 	if err != nil {
-		return retryableLoginErrorf("komari login request failed: %w", err)
+		return retryableErrorf("komari login request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return retryableLoginErrorf("failed to read komari login response: %w", err)
+		return retryableErrorf("failed to read komari login response: %w", err)
 	}
 
 	switch {
 	case resp.StatusCode == http.StatusTooManyRequests, resp.StatusCode >= 500:
-		return retryableLoginErrorf("komari login request failed: unexpected status code %d: %s", resp.StatusCode, truncateBody(respBody))
+		return retryableErrorf("komari login request failed: unexpected status code %d: %s", resp.StatusCode, truncateBody(respBody))
 	case resp.StatusCode != http.StatusOK:
 		return fmt.Errorf("komari login request failed: unexpected status code %d: %s", resp.StatusCode, truncateBody(respBody))
 	}
@@ -267,7 +281,40 @@ func (c *Client) GetSessionToken() string {
 }
 
 // FetchNodes retrieves all nodes from Komari via the JSON-RPC2 endpoint.
+// Transport errors, 429 and 5xx responses are retried with linear backoff;
+// RPC-level errors and malformed payloads fail immediately.
 func (c *Client) FetchNodes() ([]NodeInfo, error) {
+	var nodes []NodeInfo
+	err := doWithRetry("komari nodes fetch", func() error {
+		var err error
+		nodes, err = c.fetchNodesOnce()
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Persist the fetched node UUIDs to bot_node_config.json on every fetch
+	// (startup login, WebSocket reconnect and periodic refresh all funnel
+	// through FetchNodes) so the file always reflects the nodes Komari
+	// currently manages. A persistence failure is only logged: the node data
+	// itself was fetched successfully and must not be discarded over a disk
+	// write problem.
+	uuids := make([]string, len(nodes))
+	for i, n := range nodes {
+		uuids[i] = n.UUID
+	}
+	if err := config.SaveBotNodeConfig(global.ConfigPath.BotNodeConfig, uuids); err != nil {
+		postLog.Warning("Failed to save bot node config: " + err.Error())
+	}
+
+	// postLog.Debug(fmt.Sprintf("Fetched %d nodes from Komari", len(nodes)))
+	return nodes, nil
+}
+
+// fetchNodesOnce performs a single nodes RPC round trip. The response body is
+// closed before returning so retries never accumulate open connections.
+func (c *Client) fetchNodesOnce() ([]NodeInfo, error) {
 	payload, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "common:getNodes",
@@ -286,16 +333,24 @@ func (c *Client) FetchNodes() ([]NodeInfo, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("komari nodes request failed: %w", err)
+		return nil, retryableErrorf("komari nodes request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("komari nodes request failed: unexpected status code %d", resp.StatusCode)
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, retryableErrorf("failed to read komari nodes response: %w", err)
+	}
+
+	switch {
+	case resp.StatusCode == http.StatusTooManyRequests, resp.StatusCode >= 500:
+		return nil, retryableErrorf("komari nodes request failed: unexpected status code %d: %s", resp.StatusCode, truncateBody(respBody))
+	case resp.StatusCode != http.StatusOK:
+		return nil, fmt.Errorf("komari nodes request failed: unexpected status code %d: %s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	var rpcResp jsonRpcResponse
-	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
 		return nil, fmt.Errorf("failed to parse komari nodes RPC response: %w", err)
 	}
 
@@ -312,22 +367,6 @@ func (c *Client) FetchNodes() ([]NodeInfo, error) {
 	for _, n := range nodeMap {
 		nodes = append(nodes, n)
 	}
-
-	// Persist the fetched node UUIDs to bot_node_config.json on every fetch
-	// (startup login, WebSocket reconnect and periodic refresh all funnel
-	// through FetchNodes) so the file always reflects the nodes Komari
-	// currently manages. A persistence failure is only logged: the node data
-	// itself was fetched successfully and must not be discarded over a disk
-	// write problem.
-	uuids := make([]string, len(nodes))
-	for i, n := range nodes {
-		uuids[i] = n.UUID
-	}
-	if err := config.SaveBotNodeConfig(global.ConfigPath.BotNodeConfig, uuids); err != nil {
-		postLog.Warning("Failed to save bot node config: " + err.Error())
-	}
-
-	// postLog.Debug(fmt.Sprintf("Fetched %d nodes from Komari", len(nodes)))
 	return nodes, nil
 }
 
